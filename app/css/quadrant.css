@@ -1,0 +1,118 @@
+/* ===== 四象限 ===== */
+.q-wrap { display: flex; flex-direction: column; gap: 14px; }
+.q-input {
+  background: var(--surface); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 14px;
+}
+#qInput {
+  width: 100%; min-height: 92px; resize: vertical;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-size: 13px; font-family: inherit; line-height: 1.7; color: var(--text);
+  background: var(--surface);
+}
+#qInput:focus {
+  border-color: var(--blue); outline: none; box-shadow: 0 0 0 2px rgba(59,130,246,.15);
+}
+.q-input-actions {
+  display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap;
+}
+.q-status { font-size: 12px; color: var(--text-muted); }
+
+/* ===== 四格：一直画出来，空格子也能直接往里填 ===== */
+.q-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.q-cell {
+  display: flex; flex-direction: column;
+  background: var(--surface); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 12px;
+  min-height: 180px;
+  border: 1px dashed transparent; border-top: 3px solid var(--gray);
+  transition: var(--transition);
+}
+/* 四个象限各给一个颜色，一眼分得清轻重缓急 */
+.q-cell-1 { border-top-color: var(--rose); }
+.q-cell-2 { border-top-color: var(--blue); }
+.q-cell-3 { border-top-color: var(--amber); }
+.q-cell-4 { border-top-color: var(--gray); }
+.q-cell.hover { border-style: dashed; border-color: var(--blue); background: var(--blue-bg); }
+
+.q-cell-head {
+  display: flex; align-items: center; gap: 8px;
+  padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+.q-cell-1 .q-cell-name { color: var(--rose); }
+.q-cell-2 .q-cell-name { color: var(--blue); }
+.q-cell-3 .q-cell-name { color: var(--amber); }
+.q-cell-name { font-size: 13px; font-weight: 600; }
+.q-cell-hint { font-size: 11px; color: var(--text-muted); }
+.q-add {
+  margin-left: auto; flex-shrink: 0;
+  width: 22px; height: 22px; line-height: 1;
+  border: 1px solid var(--border); border-radius: 50%;
+  background: var(--surface); color: var(--text-secondary);
+  font-size: 15px; font-family: inherit; cursor: pointer;
+  transition: var(--transition);
+}
+.q-add:hover { color: var(--blue); border-color: var(--blue); background: var(--blue-bg); }
+
+.q-items {
+  display: flex; flex-direction: column; gap: 8px;
+  flex: 1; max-height: 320px; overflow-y: auto;
+}
+.q-empty {
+  font-size: 12px; color: var(--text-muted); text-align: center;
+  padding: 26px 8px; line-height: 1.7;
+}
+
+/* ===== 条目卡片 ===== */
+.q-item {
+  position: relative; cursor: grab;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 8px 26px 8px 22px;
+}
+.q-item:hover { border-color: var(--blue); }
+.q-item.dragging { opacity: .5; }
+.q-grip {
+  position: absolute; left: 5px; top: 50%; transform: translateY(-50%);
+  font-size: 12px; color: var(--text-muted); cursor: grab; user-select: none;
+}
+.q-item-text {
+  width: 100%; padding: 0; border: none; background: none;
+  font-size: 13px; font-weight: 500; font-family: inherit;
+  color: var(--text); line-height: 1.5;
+}
+.q-item-text:focus { outline: none; }
+.q-item-text::placeholder { color: var(--text-muted); font-weight: 400; }
+.q-item-time {
+  display: flex; align-items: center; gap: 4px; margin-top: 6px; flex-wrap: wrap;
+}
+.q-item-time input:not(.time-native) {
+  padding: 2px 4px; border: 1px solid var(--border); border-radius: 4px;
+  font-size: 11px; font-family: inherit; color: var(--text-secondary);
+  background: var(--surface); cursor: pointer;
+}
+.q-item-time input[type="date"] { flex: 1; min-width: 92px; }
+.q-item-time .time-text { width: 46px; }
+.q-item-reason {
+  font-size: 11px; color: var(--text-secondary); margin-top: 5px; line-height: 1.5;
+}
+.q-item-del {
+  position: absolute; top: 4px; right: 4px;
+  border: none; background: none; color: var(--text-muted);
+  font-size: 13px; padding: 2px 4px; cursor: pointer; border-radius: 4px;
+}
+.q-item-del:hover { color: var(--rose); background: var(--rose-bg); }
+
+.q-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.q-raw {
+  background: var(--surface); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 12px;
+}
+.q-raw-head { font-size: 12px; color: var(--amber); margin-bottom: 8px; }
+.q-raw pre {
+  font-size: 12px; white-space: pre-wrap; word-break: break-word;
+  color: var(--text-secondary); max-height: 240px; overflow: auto;
+}
+
+@media (max-width: 640px) {
+  .q-grid { grid-template-columns: 1fr; }
+}

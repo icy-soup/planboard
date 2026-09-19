@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PlanBoard · 日计划看板</title>
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/list.css">
+<link rel="stylesheet" href="css/week.css">
+<link rel="stylesheet" href="css/memo.css">
+<link rel="stylesheet" href="css/quadrant.css">
+<link rel="stylesheet" href="css/tpl-cal.css">
+</head>
+<body>
+<div class="container" id="app">
+
+  <header class="header">
+    <div class="header-left">
+      <h1 id="projectTitle">📋 PlanBoard</h1>
+    </div>
+    <div class="header-actions">
+      <button class="btn" onclick="openSettings()">⚙ 设置</button>
+      <button class="btn" onclick="exportJSON()">⬇ 导出</button>
+      <button class="btn" onclick="document.getElementById('importFile').click()">⬆ 导入</button>
+      <input type="file" id="importFile" accept=".json" style="display:none" onchange="importJSON(event)">
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-view="week">周视图</button>
+    <button class="tab" data-view="list">列表视图</button>
+    <button class="tab" data-view="quadrant">四象限</button>
+    <button class="tab" data-view="memo">备忘录</button>
+  </nav>
+
+  <section class="view" id="view-week">
+    <div class="week-wrap">
+      <div class="week-toolbar">
+        <span class="week-label" id="weekLabel"></span>
+        <button class="btn" onclick="PB.week.prevWeek()">← 上周</button>
+        <button class="btn" onclick="PB.week.gotoThisWeek()">回到本周</button>
+        <button class="btn" onclick="PB.week.nextWeek()">下周 →</button>
+      </div>
+      <div id="weekGrid"></div>
+    </div>
+  </section>
+
+  <section class="view" id="view-list">
+    <div class="list-toolbar">
+      <span class="list-label" id="listLabel"></span>
+      <button class="btn" onclick="PB.list.prevWeek()">← 上周</button>
+      <button class="btn" onclick="PB.list.gotoThisWeek()">回到本周</button>
+      <button class="btn" onclick="PB.list.nextWeek()">下周 →</button>
+      <span class="list-range" title="起止区间最多 10 天">
+        <input type="date" id="listFrom" onchange="PB.list.setRange('from', this.value)">
+        <span class="sep">~</span>
+        <input type="date" id="listTo" onchange="PB.list.setRange('to', this.value)">
+      </span>
+      <button class="btn" onclick="PB.list.collapseAll()">📋 全折叠</button>
+      <button class="btn" onclick="PB.list.expandAll()">📂 全展开</button>
+    </div>
+
+    <div class="overview" id="overviewBar"></div>
+
+    <div class="progress-wrap">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-text" id="progressText">已完成 0 / 0 项</div>
+    </div>
+
+    <div id="dayContainer"></div>
+
+    <div class="shortcuts">
+      <kbd>Ctrl+Enter</kbd> 确认编辑 &nbsp;·&nbsp; <kbd>Esc</kbd> 取消编辑 &nbsp;·&nbsp; 拖拽卡片可排序/跨日移动
+    </div>
+  </section>
+
+  <section class="view" id="view-quadrant">
+    <div class="q-wrap">
+      <div class="q-input">
+        <textarea id="qInput" placeholder="（可选）一行一条，让 AI 帮你分象限"></textarea>
+        <div class="q-input-actions">
+          <button class="btn" onclick="PB.quadrant.analyze()">🤖 让 AI 分一下</button>
+          <span class="q-status" id="qStatus"></span>
+        </div>
+      </div>
+
+      <div class="q-grid" id="qGrid"></div>
+
+      <div class="q-actions" id="qActions" style="display:none">
+        <button class="btn btn-primary" data-write data-write-count onclick="PB.quadrant.commit()">✓ 确认写入（0）</button>
+        <button class="btn" data-write onclick="PB.quadrant.discard()">清空格子</button>
+        <button class="btn" id="qRemember" style="display:none" onclick="PB.quadrant.remember()">记住这次的偏好</button>
+      </div>
+
+      <div class="q-raw" id="qRaw" style="display:none"></div>
+    </div>
+  </section>
+
+  <section class="view" id="view-memo">
+    <div class="memo-wrap">
+      <aside class="memo-side">
+        <div class="memo-list" id="memoList"></div>
+      </aside>
+      <div class="memo-main">
+        <div class="memo-main-head">
+          <button class="btn btn-primary" onclick="PB.memo.createMemo()">+ 新建笔记</button>
+          <button class="btn btn-danger" id="memoDelete" onclick="PB.memo.deleteMemo(PB.memo.activeId)">删除</button>
+        </div>
+        <input class="memo-title-input" id="memoTitle" placeholder="标题" oninput="PB.memo.onEdit()">
+        <textarea class="memo-body-input" id="memoBody" placeholder="随手记点什么…" oninput="PB.memo.onEdit()"></textarea>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settingsModal" onclick="PB.settings.onOverlayClick(event)">
+  <div class="modal">
+    <button class="modal-close" onclick="closeSettings()">&times;</button>
+    <h2>⚙ 设置</h2>
+
+    <div class="modal-section">
+      <h3>项目名称</h3>
+      <div class="form-row">
+        <input type="text" id="configProjectName" style="flex:1" placeholder="例如：期末复习计划">
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <h3>学期与课表</h3>
+      <div class="form-row">
+        <label style="min-width:84px">开学日期</label>
+        <input type="date" id="configSemesterStart"
+          onchange="PB.settings.setSemester('start', this.value)">
+        <span style="font-size:12px;color:var(--text-muted);">第一周周一。用于推算单双周；留空则单双周按每周显示</span>
+      </div>
+      <div class="form-row">
+        <label style="min-width:84px">学期结束日期</label>
+        <input type="date" id="configSemesterEnd"
+          onchange="PB.settings.setSemester('end', this.value)">
+        <span style="font-size:12px;color:var(--text-muted);">新建课程时作为「生效止」的默认值</span>
+      </div>
+      <div class="form-hint" id="semesterWeeks"></div>
+
+      <div class="form-row" style="margin-top:10px;">
+        <button class="btn btn-primary" onclick="PB.tplcal.open()">📅 打开课表日历</button>
+        <span style="font-size:12px;color:var(--text-muted);">课程的新增、调整、删除都在日历里完成</span>
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <h3>分类管理 <span style="font-weight:400;color:var(--text-muted);font-size:12px;">（添加/删除/改名/改色）</span></h3>
+      <div class="subject-list" id="subjectList"></div>
+      <div class="form-row" style="margin-top:8px;">
+        <input type="text" id="newSubjectName" placeholder="新分类名称" style="flex:1">
+        <input type="color" id="newSubjectColor" value="#3b82f6">
+        <button class="btn btn-primary" onclick="addSubject()">+ 添加</button>
+      </div>
+    </div>
+
+    <div class="modal-section" id="desktopSection">
+      <h3>桌面版</h3>
+      <label class="edit-check"><input type="checkbox" id="setOpenAtLogin"
+        onchange="PB.settings.setDesktop('openAtLogin', this.checked)"> 开机自动启动</label>
+      <label class="edit-check"><input type="checkbox" id="setCloseToTray"
+        onchange="PB.settings.setDesktop('closeToTray', this.checked)"> 关闭窗口后常驻托盘，不退出</label>
+      <div class="form-hint" id="desktopHint" style="display:none;">
+        这两项只在桌面版生效。先运行 tools\make-shortcut.vbs 生成 PlanBoard.lnk，双击它启动桌面版。
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <h3>AI（DeepSeek）</h3>
+      <div class="form-row">
+        <label>API Key</label>
+        <input type="password" id="configApiKey" placeholder="sk-…" style="flex:1" autocomplete="off">
+        <button class="btn btn-primary" onclick="PB.settings.saveApiKey()">保存</button>
+        <button class="btn btn-danger" onclick="PB.settings.clearApiKey()">清除</button>
+      </div>
+      <div class="form-hint" id="apiKeyStatus"></div>
+      <div class="form-row">
+        <label>模型</label>
+        <input type="text" id="configAiModel" placeholder="deepseek-flash" style="flex:1">
+      </div>
+      <div class="form-hint">密钥存在 data/secrets.json，和主数据分开，导出 JSON 不会把它带出去；桌面版下它也不进入页面。</div>
+    </div>
+
+    <div class="modal-section">
+      <h3>个人背景记忆
+        <span style="font-weight:400;color:var(--text-muted);font-size:12px;">（只有勾选「发送给 AI」的文件会被读取和发送）</span>
+      </h3>
+      <div class="memory-tabs" id="memoryTabs"></div>
+      <label class="edit-check">
+        <input type="checkbox" id="memoryEnabled" onchange="PB.settings.setMemoryEnabled(this.checked)">
+        把这个文件发送给 AI
+      </label>
+      <textarea class="memory-text" id="memoryText" placeholder="在这里写…"
+        oninput="PB.settings.onMemoryInput()"></textarea>
+      <div class="form-hint" id="memoryHint"></div>
+    </div>
+
+    <div class="modal-section">
+      <h3>操作</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn" onclick="exportJSON()">⬇ 导出为 JSON</button>
+        <button class="btn" onclick="resetPlan()">↺ 重置所有数据</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 课表日历 -->
+<div class="modal-overlay" id="tplCalModal" onclick="PB.tplcal.onOverlayClick(event)">
+  <div class="modal">
+    <button class="modal-close" onclick="PB.tplcal.close()">&times;</button>
+    <h2>📅 课表日历<span class="tplcal-hint">改动即时保存 · 点空格新建 / 拖块改时间 / 拖底边改时长 / 点块改详情</span></h2>
+    <div class="tplcal-wrap">
+      <div class="tplcal" id="tplCal"></div>
+      <aside class="tplcal-detail" id="tplCalDetail"></aside>
+    </div>
+  </div>
+</div>
+
+<!-- 任务编辑 -->
+<div class="modal-overlay" id="editModal" onclick="PB.edit.onOverlayClick(event)">
+  <div class="modal modal-sm">
+    <button class="modal-close" onclick="PB.edit.close()">&times;</button>
+    <h2 id="editTitle">任务详情</h2>
+    <div id="editBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/util.js"></script>
+<script src="js/store.js"></script>
+<script src="js/template.js"></script>
+<script src="js/memory.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/view-list.js"></script>
+<script src="js/view-week.js"></script>
+<script src="js/memo.js"></script>
+<script src="js/quadrant.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/tpl-cal.js"></script>
+<script src="js/edit-modal.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

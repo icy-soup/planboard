@@ -1,0 +1,15 @@
+# 私人数据与 API 密钥 — 绝不提交
+data/
+
+# 设计文档 — 仅本地保留
+docs/
+
+# Claude Code 本地配置与交接文档 — 绝不提交
+.claude/
+
+# 依赖与构建产物
+node_modules/
+dist/
+
+# 快捷方式 — 里面是本机绝对路径，换台机器就不对了
+PlanBoard.lnk

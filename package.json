@@ -1,0 +1,48 @@
+{
+  "name": "planboard",
+  "version": "2.0.0",
+  "private": true,
+  "description": "日计划看板 — 清醒日周视图 / 循环课表模板 / 四象限 AI",
+  "author": "icy-soup",
+  "license": "MIT",
+  "main": "electron/main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/icy-soup/planboard.git"
+  },
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test",
+    "dist": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^44.4.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.icysoup.planboard",
+    "productName": "PlanBoard",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "app/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "PlanBoard-Setup-${version}.${ext}"
+    }
+  }
+}
