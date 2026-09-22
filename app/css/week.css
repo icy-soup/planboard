@@ -83,6 +83,12 @@
 .week-block.virtual .week-block-time,
 .week-block.virtual .week-block-loc { font-size: 11px; }
 .week-block.done { opacity: .5; text-decoration: line-through; }
+/* 跨天的任务块：在覆盖到的每一天各出现一块，连着这几天是同一件事。
+   不给拖（拖走一块该动的是范围），所以光标是手而不是抓手 */
+.week-block.multi {
+  cursor: pointer; border-left-style: dashed;
+  background: color-mix(in srgb, var(--sub-color) 9%, transparent);
+}
 .week-block-time { font-size: 10px; color: var(--text-secondary); }
 .week-block-loc { font-size: 10px; color: var(--text-muted); }
 .week-block-text { font-weight: 500; word-break: break-word; }
@@ -90,6 +96,29 @@
             background: var(--rose); z-index: 4; pointer-events: none; }
 .week-now::before { content: ''; position: absolute; left: -4px; top: -3px;
                     width: 8px; height: 8px; border-radius: 50%; background: var(--rose); }
+
+/* ===== 峰谷计价（DeepSeek）===== */
+.week-price-spacer { width: 20px; flex-shrink: 0; }
+.week-price-gutter {
+  width: 20px; flex-shrink: 0; position: relative; cursor: help;
+  background: rgba(16,185,129,.12);               /* 空闲（谷）= 绿底 */
+  border-bottom: 1px dashed var(--border);
+}
+.week-price-seg.peak {
+  position: absolute; left: 0; right: 0;
+  background: rgba(245,158,11,.24);               /* 高峰 = 琥珀 */
+  border-left: 2px solid var(--amber);
+}
+.week-head-offpeak {
+  font-size: 10px; font-weight: 600; color: var(--emerald);
+  background: var(--emerald-bg); border-radius: 20px;
+  padding: 0 5px; margin-left: 4px; cursor: help; line-height: 1.5;
+}
+.week-price-legend {
+  font-size: 12px; color: var(--text-secondary); white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 6px; margin-left: 4px;
+}
+.price-dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex-shrink: 0; }
 @media (max-width: 640px) {
   .week-head-dow { font-size: 10px; }
   .week-head-date { font-size: 12px; }

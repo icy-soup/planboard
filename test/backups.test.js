@@ -60,6 +60,19 @@ test('10 分钟内不重复备份，超过之后才再备一份', () => {
   assert.strictEqual(backups.list(bak).length, 2);
 });
 
+test('force 的备份不受 10 分钟节流限制', () => {
+  const { state, bak } = tmp();
+  fs.writeFileSync(state, 'v1', 'utf8');
+  backups.backup(state, bak, T0);
+
+  fs.writeFileSync(state, 'v2', 'utf8');
+  assert.strictEqual(backups.backup(state, bak, T0 + MIN), null);              // 未到期，照旧跳过
+  const name = backups.backup(state, bak, T0 + MIN, { force: true });          // 强制这次一定要备
+  assert.ok(name);
+  assert.strictEqual(fs.readFileSync(path.join(bak, name), 'utf8'), 'v2');
+  assert.strictEqual(backups.list(bak).length, 2);
+});
+
 test('超过 20 份时删掉最旧的，保留最近 20 份', () => {
   const { state, bak } = tmp();
   fs.mkdirSync(bak, { recursive: true });

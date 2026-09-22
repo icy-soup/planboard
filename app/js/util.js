@@ -81,6 +81,28 @@
     return n > 0 ? n : null;
   }
 
+  // 列表视图顶部那个起止区间：倒置就对调，跨度超上限就以 from 为锚把 to 收回来
+  function clampRange(from, to, maxDays) {
+    if (daysBetween(from, to) < 0) { const t = from; from = to; to = t; }
+    if (daysBetween(from, to) > maxDays - 1) to = addDays(from, maxDays - 1);
+    return { from, to };
+  }
+
+  // 改区间的一端。用户原话：「选起始固定给一周，想看更长 / 更短的日期就改后面的时间」。
+  // 所以改「起始」= 从那天起给一周；改「结束」= 起点不动，只受上限约束；
+  // 结束拉到起点前面，说明是想往回看，那就整段平移过去、长度不变。
+  function editRange(range, field, value, maxDays) {
+    const maxSpan = maxDays - 1;
+    if (field === 'from') return { from: value, to: addDays(value, Math.min(6, maxSpan)) };
+
+    if (value >= range.from) {
+      return { from: range.from,
+               to: addDays(range.from, Math.min(daysBetween(range.from, value), maxSpan)) };
+    }
+    const span = Math.min(Math.max(daysBetween(range.from, range.to), 0), maxSpan);
+    return { from: addDays(value, -span), to: value };
+  }
+
   function formatShortDate(dateStr) {
     const d = parseDate(dateStr);
     return (d.getMonth() + 1) + '/' + d.getDate();
@@ -230,7 +252,7 @@
     pad2, toMinutes, toHHMM,
     offsetFromTime, timeFromOffset, durationMinutes,
     toDateStr, parseDate, dayOfWeek, addDays, startOfWeek, daysBetween, weekNo,
-    endFromWeeks, weeksBetween,
+    endFromWeeks, weeksBetween, clampRange, editRange,
     formatShortDate, formatDateLabel, todayStr, isToday, weekdayLabel, escapeHtml, attr,
     parseTimeInput, syncTimeField, timeKeydown,
     WEEK_PX_PER_MIN, WEEK_BAND_H,

@@ -1,0 +1,65 @@
+/* ===== 全天 / 跨天带子 ===== */
+
+/* 周视图：表头下面、时间网格上面的一条横带。
+   格子用 flex:1 + 1px 左边框，跟 .week-head / .week-col 同一套算法，所以能对齐 */
+.week-span-row {
+  display: flex; background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.week-span-gutter {
+  width: 56px; flex-shrink: 0;
+  display: flex; align-items: flex-end; justify-content: flex-end;
+  padding: 0 4px 2px 0; font-size: 10px; color: var(--text-muted);
+}
+.week-spans { flex: 1; position: relative; }
+.week-span-line { position: absolute; left: 0; right: 0; display: flex; }
+
+.week-span-cell, .week-span-gap {
+  flex: 1; min-width: 0; border-left: 1px solid var(--border);
+  display: flex; align-items: center; gap: 5px;
+  padding: 0 6px; font-size: 12px; line-height: 1.3;
+  white-space: nowrap; overflow: hidden;
+}
+.week-span-cell {
+  cursor: pointer;
+  background: color-mix(in srgb, var(--sub-color) 16%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--sub-color) 30%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--sub-color) 30%, transparent);
+}
+/* 带子最左那一格：跟时间网格里的任务块一样，来一道粗的色条 */
+.week-span-cell.head { border-left: 3px solid var(--sub-color); padding-left: 3px; }
+.week-span-cell:hover { box-shadow: inset 0 0 0 1px var(--sub-color); }
+/* 这一天做完了：整格淡下去，右边一个绿勾 */
+.week-span-cell.done { background: color-mix(in srgb, var(--sub-color) 6%, transparent); }
+.week-span-text { overflow: hidden; text-overflow: ellipsis; }
+.week-span-mark { color: var(--emerald); font-weight: 700; font-size: 15px; flex-shrink: 0; }
+.week-span-cont { color: var(--text-muted); font-size: 10px; flex-shrink: 0; }
+.week-span-edit {
+  margin-left: auto; flex-shrink: 0; border: none; background: none;
+  color: var(--text-muted); font-size: 13px; padding: 0 2px; cursor: pointer;
+}
+.week-span-cell:hover .week-span-edit { color: var(--blue); }
+/* 只占一天的全天带子能拖到别的列；跨天的没有 draggable 属性，抓不起来 */
+.week-span-cell[draggable="true"] { cursor: grab; }
+.week-span-cell.dragging { opacity: .5; }
+.week-span-cell.drop-target { box-shadow: inset 0 0 0 2px var(--blue); }
+
+/* 空档：点一下就在那天建一条全天任务 */
+.week-span-gap { cursor: pointer; position: relative; }
+.week-span-gap:hover { background: var(--blue-bg); }
+.week-span-gap:hover::after {
+  content: '+ 全天'; position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--blue); font-size: 12px; white-space: nowrap;
+}
+
+/* ===== 列表视图：每天最上面那行全天任务 ===== */
+.task-card.allday {
+  background: color-mix(in srgb, var(--sub-color) 10%, var(--bg));
+  border-left: 3px solid var(--sub-color);
+}
+/* 跨天的不给拖，把手只是摆设；只占一天的那种能拖，把手要看起来能抓 */
+.task-card.allday .drag-handle { cursor: default; opacity: .35; }
+.task-card.allday[draggable="true"] .drag-handle { cursor: grab; opacity: 1; }
+.task-card.allday .task-time { width: auto; color: var(--text-muted); }
+.span-range { flex-shrink: 0; font-size: 11px; color: var(--text-muted); white-space: nowrap; }

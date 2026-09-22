@@ -139,6 +139,46 @@ test('endFromWeeks: 缺起点或周数不是正数时返回 null', () => {
   assert.strictEqual(util.endFromWeeks('2026-09-14', null), null);
 });
 
+// 列表视图顶部那个起止区间选择器。
+// 2026-09-22 用户报的 bug：上一段到 10/1，把「起始」改成 10/6，结果跳回 10/1–10/6 ——
+// 旧实现是把倒置的两端直接对调，等于用旧的那一头把区间拽了回去。
+
+test('clampRange: 倒置就对调，跨度超上限就以 from 为锚把 to 收回来', () => {
+  assert.deepStrictEqual(util.clampRange('2026-09-27', '2026-09-21', 10),
+                         { from: '2026-09-21', to: '2026-09-27' });
+  assert.deepStrictEqual(util.clampRange('2026-09-21', '2026-10-20', 10),
+                         { from: '2026-09-21', to: '2026-09-30' });
+});
+
+test('editRange: 选「起始」= 从这天起固定给一周', () => {
+  // 用户那一例：上一段到 10/1，改成从 10/6 开始
+  assert.deepStrictEqual(util.editRange({ from: '2026-09-25', to: '2026-10-01' }, 'from', '2026-10-06', 10),
+                         { from: '2026-10-06', to: '2026-10-12' });
+  // 选到区间里面也是给一周，不会缩成 9/24–9/27
+  assert.deepStrictEqual(util.editRange({ from: '2026-09-21', to: '2026-09-27' }, 'from', '2026-09-24', 10),
+                         { from: '2026-09-24', to: '2026-09-30' });
+});
+
+test('editRange: 改「结束」= 起点不动，可长可短', () => {
+  assert.deepStrictEqual(util.editRange({ from: '2026-09-21', to: '2026-09-27' }, 'to', '2026-09-24', 10),
+                         { from: '2026-09-21', to: '2026-09-24' });
+  assert.deepStrictEqual(util.editRange({ from: '2026-09-21', to: '2026-09-27' }, 'to', '2026-09-30', 10),
+                         { from: '2026-09-21', to: '2026-09-30' });
+  // 超过 10 天上限就以起点为锚收住
+  assert.deepStrictEqual(util.editRange({ from: '2026-09-21', to: '2026-09-27' }, 'to', '2026-10-20', 10),
+                         { from: '2026-09-21', to: '2026-09-30' });
+});
+
+test('editRange: 结束拉到起点那一天就是单天', () => {
+  assert.deepStrictEqual(util.editRange({ from: '2026-09-21', to: '2026-09-27' }, 'to', '2026-09-21', 10),
+                         { from: '2026-09-21', to: '2026-09-21' });
+});
+
+test('editRange: 结束跑到起点前面 = 想往回看，整段平移，长度不变', () => {
+  assert.deepStrictEqual(util.editRange({ from: '2026-09-21', to: '2026-09-27' }, 'to', '2026-09-10', 10),
+                         { from: '2026-09-04', to: '2026-09-10' });
+});
+
 test('weeksBetween: 与 endFromWeeks 互为逆运算', () => {
   assert.strictEqual(util.weeksBetween('2026-09-14', '2026-09-20'), 1);
   assert.strictEqual(util.weeksBetween('2026-09-14', '2027-01-03'), 16);

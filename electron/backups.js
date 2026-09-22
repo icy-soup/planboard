@@ -50,9 +50,10 @@ function prune(dir, keep) {
 
 // 备份的是「上一次写盘留下的那份」，所以调用方要在覆盖主文件之前调
 // 返回新建的备份文件名；没到期或还没有主文件时返回 null
-function backup(stateFile, dir, now) {
+// opts.force：导入 / 重置这类整份覆盖的写入，不受节流限制，一定要留一份
+function backup(stateFile, dir, now, opts) {
   if (!fs.existsSync(stateFile)) return null;
-  if (!due(dir, now)) return null;
+  if (!due(dir, now) && !(opts && opts.force)) return null;
 
   fs.mkdirSync(dir, { recursive: true });
   const name = PREFIX + stamp(new Date(now)) + SUFFIX;

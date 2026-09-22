@@ -109,6 +109,8 @@
 .task-card.completed { opacity: .65; }
 .drag-handle { cursor: grab; color: var(--text-muted); font-size: 16px; padding: 4px; flex-shrink: 0; user-select: none; }
 .drag-handle:active { cursor: grabbing; }
+/* 跨天的那行不给拖，把手只是摆设 —— 跟列表视图的全天行同一个规矩 */
+.task-card.multi .drag-handle { cursor: default; opacity: .35; }
 .task-check { flex-shrink: 0; }
 .task-check input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; accent-color: var(--emerald); }
 .task-time { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }

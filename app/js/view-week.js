@@ -9,6 +9,7 @@
   const MIN_DURATION = 15;     // 最小时长（分钟）
   const RESIZE_EDGE = 6;       // 底部 6px 内按下视为改时长
   const LABEL_MIN_TOP = 10;    // 时刻标签距网格顶的最小距离（约半个字高，防止被表头切掉）
+const SPAN_ROW_H = 48;       // 顶部全天带子每行的高度（跟时间网格 1 小时一样高，格子好点）
 
   let currentWeekStart = null;        // 该周周一 "YYYY-MM-DD"
   let nowTimer = null;
@@ -94,18 +95,27 @@
     const leftPct = widthPct * lane;
     // 课表课程有自己的固定色，不跟任务分类搅在一起
     const sub = task.virtual ? { color: PB.store.COURSE_COLOR } : PB.store.subjectLabel(task.subject);
+    // 有时段的跨天任务会在覆盖到的每一天各画一块：块在 dateStr 这一列，
+    // 但改它得回它挂着的起始日那一格（openTask 按桶键找任务）。
+    // 它也不给拖 —— 拖走一块该动的是范围，不是某一格。
+    const multi = PB.span.isMultiDay(task);
+    const homeDate = multi ? task.date : dateStr;
+    const done = multi ? PB.span.isDoneDay(task, dateStr) : !!task.done;
     const cls = ['week-block'];
     if (task.virtual) cls.push('virtual');
-    if (task.done) cls.push('done');
+    if (multi) cls.push('multi');
+    if (done) cls.push('done');
     const tall = height >= COMPACT_H;
     const timeLine = tall ? `<div class="week-block-time">${task.start}–${task.end}</div>` : '';
     const locLine = (tall && task.loc) ? `<div class="week-block-loc">${util.escapeHtml(task.loc)}</div>` : '';
-    const title = `${task.start}–${task.end} ${task.text}` + (task.loc ? ` @ ${task.loc}` : '');
+    const range = multi
+      ? `（跨天 ${util.formatShortDate(task.date)}–${util.formatShortDate(task.to)}）` : '';
+    const title = `${task.start}–${task.end} ${task.text}` + (task.loc ? ` @ ${task.loc}` : '') + range;
     return `<div class="${cls.join(' ')}"
         style="top:${top}px;height:${height}px;left:calc(${leftPct}% + 2px);width:calc(${widthPct}% - 4px);--sub-color:${sub.color}"
-        data-task-id="${task.id}" data-date="${dateStr}"
+        data-task-id="${task.id}" data-date="${homeDate}"
         title="${util.attr(title)}"
-        onclick="PB.week.openTask('${dateStr}','${task.id}')">
+        onclick="PB.week.openTask('${homeDate}','${task.id}')">
       ${timeLine}
       <div class="week-block-text">${util.escapeHtml(task.text)}</div>
       ${locLine}
@@ -138,6 +148,17 @@
     ).join('');
   }
 
+  // 时间轴左侧的峰谷色带：工作日（非节假日）高峰 9–12 / 14–18 标成峰，其余为谷。
+  // 周末与法定节假日整天都是谷，由表头那个「谷」徽标表示。
+  function priceStripHtml(layout) {
+    const segs = PB.price.PEAK_BLOCKS.map(b => {
+      const top = util.weekY(util.offsetFromTime(b.from), layout);
+      const bottom = util.weekY(util.offsetFromTime(b.to), layout);
+      return `<div class="week-price-seg peak" style="top:${top}px;height:${Math.max(bottom - top, 2)}px"></div>`;
+    }).join('');
+    return `<div class="week-price-gutter" title="高峰（工作日）9:00–12:00、14:00–18:00；其余时段及周末、法定节假日为谷价（半价）">${segs}</div>`;
+  }
+
   // 展开/收起按钮画到左侧时间轴列里，纵向对齐各自那条带子的中线
   function bandButtonsHtml(layout, counts) {
     return layout.filter(s => s.banner).map(s => {
@@ -149,6 +170,152 @@
         title="${title}" onclick="PB.week.toggleBand('${s.id}')">${s.open ? '▾' : '▸' + (n || '')}</button>`;
     }).join('');
   }
+
+  // ============ 顶部全天带子 ============
+  // 一条全天任务横跨 date → to。带子按天分格：点哪一格就勾那一天，
+  // 格子里那个 ✎ 才是改内容（改名 / 改范围 / 删除）。
+  function spanBandHtml(it, dates, i, j) {
+    const t = it.task;
+    const sub = PB.store.subjectLabel(t.subject);
+    // 只占一天的那种才给拖（今天的不想做了，拖到明天）。
+    // 跨天的拖走该动的是范围而不是某一格，所以不给 draggable。
+    const single = PB.span.dayCount(t) === 1;
+    let cells = '';
+    for (let k = i; k <= j; k++) {
+      const date = dates[k];
+      const head = k === it.startIdx;
+      const last = k === it.endIdx;
+      const done = PB.span.isDoneDay(t, date);
+      const hint = done ? '已完成，点一下取消' : '点一下标记这天完成';
+      cells += `<div class="week-span-cell${head ? ' head' : ''}${done ? ' done' : ''}"
+          style="--sub-color:${sub.color}" data-date="${date}"
+          title="${util.attr(`${t.text} · ${util.formatShortDate(date)} ${hint}`)}"
+          onclick="PB.week.toggleSpanDay('${t.date}','${t.id}','${date}')"
+          ${single ? `draggable="true"
+            ondragstart="PB.week.spanDragStart(event,'${t.date}','${t.id}')"
+            ondragend="PB.week.spanDragEnd(event)"` : ''}>
+        ${head && it.before ? '<span class="week-span-cont">◀</span>' : ''}
+        ${head ? `<span class="week-span-text">${util.escapeHtml(t.text)}</span>` : ''}
+        ${done ? '<span class="week-span-mark">✓</span>' : ''}
+        ${last ? `${it.after ? '<span class="week-span-cont">▶</span>' : ''}
+          <button class="week-span-edit" title="改名 / 改范围 / 删除（点格子是勾这一天）"
+            onclick="event.stopPropagation();PB.week.editSpan('${t.date}','${t.id}')">✎</button>` : ''}
+      </div>`;
+    }
+    return cells;
+  }
+
+  function spanLineCells(dates, rowItems) {
+    const owner = dates.map(() => null);
+    for (const it of rowItems) {
+      for (let i = it.startIdx; i <= it.endIdx; i++) owner[i] = it;
+    }
+    let html = '';
+    let i = 0;
+    while (i < dates.length) {
+      const it = owner[i];
+      if (!it) {
+        html += `<div class="week-span-gap" data-date="${dates[i]}"
+          title="点这里加一条全天任务"
+          onclick="PB.week.newAllDay('${dates[i]}')"></div>`;
+        i++;
+        continue;
+      }
+      let j = i;
+      while (j + 1 < dates.length && owner[j + 1] === it) j++;
+      html += spanBandHtml(it, dates, i, j);
+      i = j + 1;
+    }
+    return html;
+  }
+
+  function spanLaneHtml(dates, tasks) {
+    const { items, rows } = PB.span.weekSpans(tasks, dates);
+    let lines = '';
+    for (let r = 0; r < rows; r++) {
+      lines += `<div class="week-span-line" style="top:${r * SPAN_ROW_H}px;height:${SPAN_ROW_H}px">${
+        spanLineCells(dates, items.filter(it => it.row === r))}</div>`;
+    }
+    return `<div class="week-span-row">
+      <div class="week-price-spacer"></div>
+      <div class="week-span-gutter">全天</div>
+      <div class="week-spans" style="height:${rows * SPAN_ROW_H}px"
+           ondragover="PB.week.spanDragOver(event)"
+           ondragleave="PB.week.spanDragLeave(event)"
+           ondrop="PB.week.spanDrop(event)">${lines}</div>
+    </div>`;
+  }
+
+  // ============ 单天全天任务：拖到别的列 ============
+  // 跨天的带子不给拖 —— 拖走它该动的是范围，不是某一格。
+  let spanDrag = null;         // 正在拖的那条：{ homeDate, id }
+  let spanDraggedAt = 0;       // 刚拖完跟来的那次 click 不该被当成「点一下勾完成」
+
+  function spanDragStart(e, homeDate, id) {
+    spanDrag = { homeDate, id };
+    spanDraggedAt = Date.now();
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', id);
+    e.currentTarget.classList.add('dragging');
+  }
+
+  function spanDragEnd(e) {
+    spanDrag = null;
+    spanDraggedAt = Date.now();
+    e.currentTarget.classList.remove('dragging');
+    clearSpanDropTargets();
+  }
+
+  function clearSpanDropTargets() {
+    document.querySelectorAll('.week-span-cell.drop-target')
+      .forEach(el => el.classList.remove('drop-target'));
+  }
+
+  // 不 preventDefault 浏览器就不认这里是落点
+  function spanDragOver(e) {
+    if (!spanDrag) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    clearSpanDropTargets();
+    const cell = e.target.closest('[data-date]');
+    if (cell && cell.dataset.date !== spanDrag.homeDate) cell.classList.add('drop-target');
+  }
+
+  function spanDragLeave(e) {
+    const cell = e.target.closest('[data-date]');
+    if (cell) cell.classList.remove('drop-target');
+  }
+
+  function spanDrop(e) {
+    e.preventDefault();
+    const cell = e.target.closest('[data-date]');
+    const d = spanDrag;
+    spanDrag = null;
+    clearSpanDropTargets();
+    if (!cell || !d || cell.dataset.date === d.homeDate) return;
+
+    const toDate = cell.dataset.date;
+    const st = PB.store.get();
+    if (!PB.store.moveTaskTo(st.tasks, d.homeDate, d.id, toDate, null)) return;
+    PB.store.save();
+    renderWeek();
+    PB.list.render();
+    PB.list.showToast(`已挪到 ${util.formatDateLabel(toDate)}`);
+  }
+
+  function toggleSpanDay(homeDate, id, date) {
+    if (Date.now() - spanDraggedAt < 300) return;    // 拖完那一下的 click，别顺手勾完成
+    const t = (PB.store.get().tasks[homeDate] || []).find(x => x.id === id);
+    if (!t) return;
+    PB.span.setDoneDay(t, date, !PB.span.isDoneDay(t, date));
+    PB.store.save();
+    renderWeek();
+    PB.list.render();
+  }
+
+  function editSpan(homeDate, id) { PB.edit.openTask(homeDate, id); }
+
+  function newAllDay(date) { PB.edit.openTask(date, null, { allDay: true }); }
 
   // 事件委托必须挂在不会被重建的 #weekGrid 上（每次渲染只替换它的 innerHTML）
   function bindGridOnce() {
@@ -191,21 +358,26 @@
     const layout = util.weekLayout(expanded);
     const total = util.weekTotalHeight(layout);
 
-    const header = `<div class="week-head-spacer"></div>` +
+    const header = `<div class="week-price-spacer"></div><div class="week-head-spacer"></div>` +
       dates.map(d => {
         const isToday = util.isToday(d);
+        const offpeak = PB.price.isOffPeakDay(d);
         return `<div class="week-head${isToday ? ' today' : ''}">
           <div class="week-head-dow">周${util.weekdayLabel(d)}</div>
           <div class="week-head-date">${util.formatShortDate(d)}</div>
+          ${offpeak ? '<span class="week-head-offpeak" title="全天空闲（半价）">谷</span>' : ''}
         </div>`;
       }).join('');
 
     const counts = {};
     const cols = dates.map(d => {
-      const dayTasks = st.tasks[d] || [];
+      // 有时段的跨天任务挂在起始日那一格，但覆盖到的每一天都要在网格里出现
+      const dayTasks = (st.tasks[d] || []).concat(PB.span.timedCovering(st.tasks, d));
       const weekNumber = st.config.semesterStart
         ? util.weekNo(d, st.config.semesterStart) : null;
-      const resolved = PB.template.resolveDayTasks(d, weekNumber, st.templates, dayTasks);
+      // 全天任务画在顶部带子里，不进时间网格
+      const resolved = PB.template.resolveDayTasks(d, weekNumber, st.templates, dayTasks)
+        .filter(t => !t.allDay);
 
       const visible = [];
       for (const t of resolved) {
@@ -229,7 +401,9 @@
 
     container.innerHTML = `<div class="week-frame">
       <div class="week-head-row">${header}</div>
+      ${spanLaneHtml(dates, st.tasks)}
       <div class="week-body">
+        ${priceStripHtml(layout)}
         <div class="week-gutter" style="height:${total}px">${
           hourLinesHtml(layout, true) + bandButtonsHtml(layout, counts)
         }</div>
@@ -282,7 +456,8 @@
   function onBlockPointerDown(e) {
     if (e.button !== 0) return;
     const el = e.target.closest('.week-block');
-    if (!el || el.classList.contains('virtual')) return;   // 课表背景不参与拖拽
+    // 课表背景不参与拖拽；跨天的那块也不给拖 —— 拖走一块该动的是范围，不是某一格
+    if (!el || el.classList.contains('virtual') || el.classList.contains('multi')) return;
     const rect = el.getBoundingClientRect();
     const isResize = (e.clientY > rect.bottom - RESIZE_EDGE);
     drag = {
@@ -357,21 +532,12 @@
       committed.end = util.timeFromOffset(util.offsetFromTime(newStart) + dur);
 
       if (d.pendingDate && d.pendingDate !== d.date) {
-        moveAcrossDays(st, d.date, committed.id, d.pendingDate);
+        // 搬格子交给 store，它会顺手把任务自带的 date 副本一起改
+        PB.store.moveTaskTo(st.tasks, d.date, committed.id, d.pendingDate, null);
       }
     }
     PB.store.save();
     renderWeek();
-  }
-
-  function moveAcrossDays(st, fromDate, taskId, toDate) {
-    const from = st.tasks[fromDate] || [];
-    const idx = from.findIndex(t => t.id === taskId);
-    if (idx === -1) return;
-    const [moved] = from.splice(idx, 1);
-    if (!from.length) delete st.tasks[fromDate];
-    if (!st.tasks[toDate]) st.tasks[toDate] = [];
-    st.tasks[toDate].push(moved);
   }
 
   // 真实任务打开详情；课表虚拟块（id 形如 v_<tplId>）走同一入口，保存即固化
@@ -381,6 +547,8 @@
   }
 
   PB.week = { renderWeek, prevWeek, nextWeek, gotoThisWeek, layoutOverlaps, openTask, toggleBand,
+              toggleSpanDay, editSpan, newAllDay,
+              spanDragStart, spanDragEnd, spanDragOver, spanDragLeave, spanDrop,
               get currentWeekStart() { return ensureWeekStart(); },
               get expanded() { return Object.assign({}, expanded); } };
 })();

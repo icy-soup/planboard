@@ -43,8 +43,51 @@
     };
   }
 
-  // 纯函数：不修改入参，输出一份补全后的 v2 状态
-  function migrate(raw) {
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+  // 任务按日期分桶存的；形状不对的内容**不能**悄悄换成 {}（2026-09-19 就是这么丢过一次任务）。
+  // 能收编的收编，收不了的记进 report：messages 给人看，dataAtRisk 表示盘上还有读不懂的东西。
+  function foldTaskArray(items, report) {
+    const out = {};
+    let dropped = 0;
+    for (const item of items) {
+      const date = (item && typeof item === 'object'
+                 && typeof item.date === 'string' && DATE_RE.test(item.date)) ? item.date : null;
+      if (!date) { dropped++; continue; }
+      (out[date] || (out[date] = [])).push(item);
+    }
+    if (report) {
+      report.messages.push(`tasks 不是按日期分桶的对象，已按每条自带的 date 归位 ${items.length - dropped} 条`
+        + (dropped ? `，另有 ${dropped} 条没有可用的 date` : ''));
+      if (dropped) report.dataAtRisk = true;
+    }
+    return out;
+  }
+
+  function normalizeTasks(raw, report) {
+    if (raw === undefined || raw === null) return {};
+    if (Array.isArray(raw)) return foldTaskArray(raw, report);
+    if (typeof raw === 'object') return raw;
+    if (report) {
+      report.dataAtRisk = true;
+      report.messages.push(`tasks 的形状读不懂（是 ${typeof raw}，既不是对象也不是数组）`);
+    }
+    return {};
+  }
+
+  function normalizeList(raw, name, report) {
+    if (raw === undefined || raw === null) return [];
+    if (Array.isArray(raw)) return raw;
+    if (report) {
+      report.dataAtRisk = true;
+      report.messages.push(`${name} 不是数组，读不懂`);
+    }
+    return [];
+  }
+
+  // 纯函数：不修改入参，输出一份补全后的 v2 状态。
+  // report 是可选的收集器（{ messages: [], dataAtRisk: false }），老调用点不传照旧。
+  function migrate(raw, report) {
     if (!raw || typeof raw !== 'object') return defaultState();
 
     const base = defaultState();
@@ -69,10 +112,70 @@
                 memoryEnabled: { ...DEFAULT_AI_SETTINGS.memoryEnabled, ...(inAi.memoryEnabled || {}) } }
         }
       },
-      tasks: (raw.tasks && typeof raw.tasks === 'object' && !Array.isArray(raw.tasks)) ? raw.tasks : {},
-      templates: Array.isArray(raw.templates) ? raw.templates : [],
-      memos: Array.isArray(raw.memos) ? raw.memos : []
+      tasks: normalizeTasks(raw.tasks, report),
+      templates: normalizeList(raw.templates, 'templates', report),
+      memos: normalizeList(raw.memos, 'memos', report)
     };
+  }
+
+  // 导入前的形状体检：放过读不懂的文件，比导完才发现任务没了便宜得多。
+  // config 可以没有（AI 写任务时通常只给 tasks，少一项也不会把现有设置抹掉）。
+  // 返回 { ok, tasks } 或 { ok: false, error }；tasks 是收编好的分桶对象
+  function checkImport(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      return { ok: false, error: '文件内容不是一个 JSON 对象' };
+    }
+    if (data.config !== undefined && data.config !== null
+        && (typeof data.config !== 'object' || Array.isArray(data.config))) {
+      return { ok: false, error: 'config 不是对象' };
+    }
+    if (data.tasks === undefined || data.tasks === null) {
+      return { ok: false, error: '缺 tasks' };
+    }
+    for (const name of ['templates', 'memos']) {
+      const v = data[name];
+      if (v !== undefined && v !== null && !Array.isArray(v)) {
+        return { ok: false, error: `${name} 不是数组` };
+      }
+    }
+    const report = newReport();
+    const tasks = normalizeTasks(data.tasks, report);
+    if (report.dataAtRisk) {
+      return { ok: false, error: 'tasks 里有读不懂的内容（' + report.messages.join('；') + '）' };
+    }
+    return { ok: true, tasks, messages: report.messages };
+  }
+
+  // ============ 任务分桶操作 ============
+  // 跨天搬任务：换格子，同时把任务自带的 date 副本一起改。
+  // 两处对不上时编辑弹窗读的是副本、写回去也是副本，表现成「拖过去又被搬回来」
+  // （2026-09-22 修的拖动 bug）。同一天内的排序不归这里管，由调用方自己处理。
+  // beforeId 为 null 或找不到时追加到末尾；搬不动返回 false。
+  function moveTaskTo(tasks, fromDate, taskId, toDate, beforeId) {
+    if (!tasks || !fromDate || !toDate || fromDate === toDate) return false;
+    const src = tasks[fromDate];
+    if (!Array.isArray(src)) return false;
+    const i = src.findIndex(t => t && t.id === taskId);
+    if (i === -1) return false;
+
+    const [moved] = src.splice(i, 1);
+    if (!src.length) delete tasks[fromDate];
+
+    if (!Array.isArray(tasks[toDate])) tasks[toDate] = [];
+    const tgt = tasks[toDate];
+    const at = beforeId ? tgt.findIndex(t => t && t.id === beforeId) : -1;
+    tgt.splice(at === -1 ? tgt.length : at, 0, moved);
+    moved.date = toDate;
+
+    // 任务自带的 to 和「那天那格勾」也得跟着走：
+    // to 等于原起始日就是单天，不搬的话往回拖会凭空长出一段区间（to 还留在旧日期右边）。
+    // 跨天的真区间（to 晚于 fromDate）不归这里管 —— 那是它自己的事，而且跨天的不给拖。
+    if (moved.to === fromDate) moved.to = toDate;
+    if (moved.doneDays && moved.doneDays[fromDate]) {
+      moved.doneDays[toDate] = true;
+      delete moved.doneDays[fromDate];
+    }
+    return true;
   }
 
   // ============ 后端 ============
@@ -128,8 +231,8 @@
       }
       return res;
     },
-    write(s) {
-      if (window.planboardAPI.storage.write(s) === false) {
+    write(s, forceBackup) {
+      if (window.planboardAPI.storage.write(s, { force: !!forceBackup }) === false) {
         notice = '写入失败：数据没能存到磁盘';
       }
     }
@@ -137,6 +240,20 @@
 
   const backendName = detectBackend();
   const backend = backendName === 'file' ? fileBackend : localBackend;
+
+  // 读到过读不懂的内容、但还没写盘时置位：下一次写盘前无条件先备一份
+  let forceBackupNext = false;
+
+  // 返回「这次读进来的东西是否全部读懂了」；读不懂时调用方不许回写盘
+  function applyReport(report) {
+    if (report.messages.length) {
+      notice = [notice].concat(report.messages).filter(Boolean).join('；');
+    }
+    if (report.dataAtRisk) forceBackupNext = true;
+    return !report.dataAtRisk;
+  }
+
+  function newReport() { return { messages: [], dataAtRisk: false }; }
 
   let migratedFromV1 = false;
   let raw = backend.read();
@@ -146,15 +263,24 @@
     if (v1) { raw = v1; migratedFromV1 = true; }
   }
 
-  let state = migrate(raw);
+  const firstReport = newReport();
+  let state = migrate(raw, firstReport);
 
-  // 首次加载即固化 v2 状态：v1 数据只迁移这一次，此后以 v2 键为准
-  save();
+  // 首次加载即固化 v2 状态：v1 数据只迁移这一次，此后以 v2 键为准。
+  // 有读不懂的内容就先别写 —— 盘上那份原样留着，比写回一份缺东西的强
+  if (applyReport(firstReport)) save();
 
-  function load() { state = migrate(backend.read()); return state; }
+  function load() {
+    const report = newReport();
+    state = migrate(backend.read(), report);
+    applyReport(report);
+    return state;
+  }
 
-  function save() {
-    backend.write(state);
+  function save(forceBackup) {
+    const force = !!forceBackup || forceBackupNext;
+    forceBackupNext = false;
+    backend.write(state, force);
     // 模块加载期 PB.list 还不存在，这种通知留给 main.js 启动后再弹
     if (notice && PB.list && PB.list.showToast) PB.list.showToast(takeNotice());
   }
@@ -165,7 +291,7 @@
   // 删掉的话下次启动会被当成「首次启动」，v1 迁移会把旧数据重新搬回来。
   function clear() {
     state = defaultState();
-    backend.write(state);
+    backend.write(state, true);   // 整份覆盖，写前无条件留一份备份
     return state;
   }
 
@@ -178,7 +304,7 @@
   }
 
   const api = {
-    migrate, defaultState,
+    migrate, defaultState, normalizeTasks, checkImport, moveTaskTo,
     load, save, get, clear, takeNotice,
     get backendName() { return backendName; },
     get migratedFromV1() { return migratedFromV1; },

@@ -54,7 +54,7 @@
   }
 
   // ============ 渲染 ============
-  function render() {
+  function render(opts) {
     const el = document.getElementById('tplCal');
     if (!el) return;
     const templates = PB.store.get().templates;
@@ -91,6 +91,7 @@
       </div>
     </div>`;
 
+    if (opts && opts.keepDetail) { syncDetail(); syncWarn(); return; }
     renderDetail();
   }
 
@@ -120,21 +121,12 @@
   function renderDetail() {
     const el = document.getElementById('tplCalDetail');
     if (!el) return;
-    // 重建会把正在编辑的 DOM 整个换掉、焦点掉回 body，所以先记下改的是哪个字段，建完还回去。
-  // 字段名写在各自的 data-field 上；时间那种一对输入框写成 .time-field 那个 span 上。
-    const active = document.activeElement;
-    const focused = (active && el.contains(active)) ? active.closest('[data-field]') : null;
-    const restore = focused ? focused.dataset.field : null;
-
     const t = selected();
     if (!t) {
       el.innerHTML = '<div class="tplcal-detail-empty">点左边的课块，在这里改它的详情</div>';
       return;
     }
     const weeks = util.weeksBetween(t.from, t.to);
-    // 单双周靠开学日期算周次；没设的话 templateApplies 会降级成每周，得说出来
-    const parityWarn = (t.parity !== 'all' && !PB.store.get().config.semesterStart)
-      ? '<div class="tplcal-detail-warn">还没设开学日期，这门课的单双周现在按每周显示</div>' : '';
 
     el.innerHTML = `
       <h4>课程详情</h4>
@@ -148,7 +140,7 @@
       <label>频次<select onchange="PB.tplcal.setField('parity', this.value)">
         ${PARITY_CN.map(([v, lb]) => `<option value="${v}"${v === t.parity ? ' selected' : ''}>${lb}</option>`).join('')}
       </select></label>
-      ${parityWarn}
+      <div id="tplCalWarn"></div>
       <div class="tplcal-detail-row">
         <label>开始<span class="time-field" data-field="start" onkeydown="PB.util.timeKeydown(event)">
           <input type="text" class="time-text" inputmode="numeric" maxlength="5" value="${attr(t.start)}"
@@ -176,20 +168,46 @@
       <button class="btn btn-danger" onclick="PB.tplcal.remove('${t.id}')">删除这门课</button>
     `;
 
-    if (!restore) return;
-    const next = el.querySelector(`[data-field="${restore}"] .time-text`)
-              || el.querySelector(`[data-field="${restore}"]`);
-    if (!next) return;
-    next.focus();
-    // date / number 这类输入不支持选区内操作，select() 会抛 InvalidStateError，
-    // 所以只对文本框做全选（正好省得删掉老值重打）
-    if (next.type === 'text') next.select();
+    syncWarn();
+  }
+
+  // 单双周提示条：跟着「频次」和「有没有设开学日期」变，不用整块重建
+  function syncWarn() {
+    const slot = document.getElementById('tplCalWarn');
+    if (!slot) return;
+    const t = selected();
+    slot.innerHTML = (t && t.parity !== 'all' && !PB.store.get().config.semesterStart)
+      ? '<div class="tplcal-detail-warn">还没设开学日期，这门课的单双周现在按每周显示</div>' : '';
+  }
+
+  // 面板不重建时，把会跟着变的几个值刷上去。
+  // 只在值确实不同时才写，所以不会打断正在编辑的那个框。
+  function syncDetail() {
+    const el = document.getElementById('tplCalDetail');
+    const t = selected();
+    if (!el || !t) return;
+    const put = (field, value) => {
+      const input = el.querySelector(`[data-field="${field}"]`);
+      if (input && input.value !== value) input.value = value;
+    };
+    put('from', t.from || '');
+    put('to', t.to || '');
+    const weeks = util.weeksBetween(t.from, t.to);
+    put('weeks', weeks == null ? '' : String(weeks));
+    // 时间那一对：改「开始」时若和「结束」撞上，结束会被错开一刻钟，这儿得跟上
+    for (const f of ['start', 'end']) {
+      const v = t[f] || '';
+      const text = el.querySelector(`[data-field="${f}"] .time-text`);
+      const native = el.querySelector(`[data-field="${f}"] .time-native`);
+      if (text && text.value !== v) text.value = v;
+      if (native && native.value !== v) native.value = v;
+    }
   }
 
   // 任何改动都立刻落盘，并同步周视图
-  function commit() {
+  function commit(opts) {
     PB.store.save();
-    render();
+    render(opts);
     PB.week.renderWeek();
   }
 
@@ -238,16 +256,19 @@
     const t = selected();
     if (!t) return;
 
-    // 生效起 / 生效止 / 持续周数 三者互推，改哪个都让另外两个跟着自洽
+    // 生效起 / 生效止 / 持续周数 三者互推，改哪个都让另外两个跟着自洽。
+    // 一律 keepDetail：面板里正是用户在打字的框，整块重建等于把焦点踢走。
+    const keep = { keepDetail: true };
+
     if (field === 'weeks') {
       const end = util.endFromWeeks(t.from, value);
       if (!end) {
         PB.list.showToast('先填「生效起」，才能按周数推生效止');
-        render();     // 把输入框里的数字弹回真实值，别让界面和数据对不上
+        renderDetail();   // 把输入框里那个推不出来的数字弹回真实值
         return;
       }
       t.to = end;
-      commit();
+      commit(keep);
       return;
     }
 
@@ -256,21 +277,21 @@
       t.from = value || null;
       // 起点挪了终点跟着挪；起被清空就留住原来的止 —— 只有「止」也是合法的
       if (weeks && t.from) t.to = util.endFromWeeks(t.from, weeks);
-      commit();
+      commit(keep);
       return;
     }
 
     if (field === 'to') {
       // 按整周对齐，否则「周数 × 7」跟生效止对不上
       t.to = util.endFromWeeks(t.from, util.weeksBetween(t.from, value)) || (value || null);
-      commit();
+      commit(keep);
       return;
     }
 
     t[field] = value;
     // 起止相同会被 durationMinutes 算成 1440 分钟（铺满一整天），错开 15 分钟
     if (t.start === t.end) t.end = util.toHHMM(util.toMinutes(t.start) + MIN_DURATION);
-    commit();
+    commit(keep);
   }
 
   function remove(id) {

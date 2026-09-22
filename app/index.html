@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="css/memo.css">
 <link rel="stylesheet" href="css/quadrant.css">
 <link rel="stylesheet" href="css/tpl-cal.css">
+<link rel="stylesheet" href="css/span.css">
 </head>
 <body>
 <div class="container" id="app">
@@ -20,7 +21,7 @@
     </div>
     <div class="header-actions">
       <button class="btn" onclick="openSettings()">⚙ 设置</button>
-      <button class="btn" onclick="exportJSON()">⬇ 导出</button>
+      <button class="btn" onclick="openExport()">⬇ 导出</button>
       <button class="btn" onclick="document.getElementById('importFile').click()">⬆ 导入</button>
       <input type="file" id="importFile" accept=".json" style="display:none" onchange="importJSON(event)">
     </div>
@@ -40,6 +41,10 @@
         <button class="btn" onclick="PB.week.prevWeek()">← 上周</button>
         <button class="btn" onclick="PB.week.gotoThisWeek()">回到本周</button>
         <button class="btn" onclick="PB.week.nextWeek()">下周 →</button>
+        <span class="week-price-legend" title="DeepSeek 峰谷计价：空闲时段价格为高峰时段的一半。工作日 9:00–12:00、14:00–18:00 为高峰；其余时段及周末、法定节假日为空闲。">
+          <span class="price-dot" style="background:rgba(245,158,11,.6)"></span>高峰
+          <span class="price-dot" style="background:rgba(16,185,129,.6)"></span>空闲
+        </span>
       </div>
       <div id="weekGrid"></div>
     </div>
@@ -167,6 +172,7 @@
       <div class="form-hint" id="desktopHint" style="display:none;">
         这两项只在桌面版生效。先运行 tools\make-shortcut.vbs 生成 PlanBoard.lnk，双击它启动桌面版。
       </div>
+      <div class="form-hint" id="dataDirHint"></div>
     </div>
 
     <div class="modal-section">
@@ -202,9 +208,61 @@
     <div class="modal-section">
       <h3>操作</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn" onclick="exportJSON()">⬇ 导出为 JSON</button>
+        <button class="btn" onclick="openExport()">⬇ 导出为 JSON</button>
         <button class="btn" onclick="resetPlan()">↺ 重置所有数据</button>
       </div>
+      <div class="form-hint">
+        导出先选日期范围，再勾要带的内容（课表模板 / 设置 / 备忘录）。
+        不含 API Key（那是 secrets.json）和个人背景记忆。
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 导出：选一段日期 + 要带的内容，选完才下载 -->
+<div class="modal-overlay" id="exportModal" onclick="PB.settings.onExportOverlayClick(event)">
+  <div class="modal modal-sm">
+    <button class="modal-close" onclick="PB.settings.cancelExport()">&times;</button>
+    <h2>导出数据</h2>
+    <div class="edit-row">
+      <label>起始日期<input type="date" id="exportFrom"></label>
+      <label>结束日期<input type="date" id="exportTo"></label>
+    </div>
+    <label class="edit-check"><input type="checkbox" id="exportAll"
+      onchange="PB.settings.syncExportAll()"> 全部日期（不筛，整个导出）</label>
+    <label class="edit-check"><input type="checkbox" id="exportTemplates"> 包含课表模板</label>
+    <label class="edit-check"><input type="checkbox" id="exportConfig"> 包含设置（学期起止 / 分类）</label>
+    <label class="edit-check"><input type="checkbox" id="exportMemos"> 包含备忘录</label>
+    <div class="form-hint">
+      任务按天筛：区间外的日期不会进文件。跨天任务只要有一段落在区间里就会带上。
+      不含 API Key（那是 secrets.json）和个人背景记忆。
+    </div>
+    <div class="edit-actions">
+      <button class="btn" onclick="PB.settings.cancelExport()">取消</button>
+      <span class="edit-spacer"></span>
+      <button class="btn btn-primary" onclick="PB.settings.confirmExport()">导出</button>
+    </div>
+  </div>
+</div>
+
+<!-- 导入：先让用户看清两边都有多少东西，再决定覆盖还是合并 -->
+<div class="modal-overlay" id="importModal" onclick="PB.settings.onImportOverlayClick(event)">
+  <div class="modal modal-sm">
+    <button class="modal-close" onclick="PB.settings.cancelImport()">&times;</button>
+    <h2>导入数据</h2>
+    <div class="import-file">文件：<b id="importFileName"></b></div>
+    <div class="import-cmp" id="importSummary"></div>
+    <div class="form-hint">
+      <b>合并</b>：文件里和现有同一 id 的项覆盖掉，其余原样留着。<br>
+      <b>覆盖</b>：只换文件里出现过的那些日期，文件里没有的日期一条不动。
+    </div>
+    <label class="edit-check"><input type="checkbox" id="importTemplates">
+      连课表模板一起处理（不勾就完全不动现有课表）</label>
+    <div class="edit-actions">
+      <button class="btn" onclick="PB.settings.cancelImport()">取消</button>
+      <span class="edit-spacer"></span>
+      <button class="btn btn-primary" onclick="PB.settings.doImport('merge')">合并导入</button>
+      <button class="btn btn-danger" onclick="PB.settings.doImport('overwrite')">覆盖导入</button>
     </div>
   </div>
 </div>
@@ -233,7 +291,10 @@
 <div class="toast" id="toast"></div>
 
 <script src="js/util.js"></script>
+<script src="js/price.js"></script>
 <script src="js/store.js"></script>
+<script src="js/span.js"></script>
+<script src="js/transfer.js"></script>
 <script src="js/template.js"></script>
 <script src="js/memory.js"></script>
 <script src="js/ai.js"></script>

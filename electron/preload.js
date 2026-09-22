@@ -6,11 +6,12 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('planboardAPI', {
   storage: {
     read: () => ipcRenderer.sendSync('storage:read'),
-    write: (state) => ipcRenderer.sendSync('storage:write', state)
+    write: (state, opts) => ipcRenderer.sendSync('storage:write', state, opts)
   },
   app: {
     setOpenAtLogin: (on) => ipcRenderer.invoke('app:setOpenAtLogin', on),
-    setCloseToTray: (on) => ipcRenderer.invoke('app:setCloseToTray', on)
+    setCloseToTray: (on) => ipcRenderer.invoke('app:setCloseToTray', on),
+    dataDir: () => ipcRenderer.invoke('app:dataDir')
   },
   secrets: {
     // 完整密钥留在主进程，页面只拿得到「配没配 + 尾号」

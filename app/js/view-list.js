@@ -15,21 +15,12 @@
     return { from: s, to: util.addDays(s, 6) };
   }
 
-  // 起止倒置则交换；跨度超上限则以 from 为锚把 to 收回来
-  function clampRange(from, to) {
-    if (util.daysBetween(from, to) < 0) { const t = from; from = to; to = t; }
-    if (util.daysBetween(from, to) > MAX_RANGE_DAYS - 1) {
-      to = util.addDays(from, MAX_RANGE_DAYS - 1);
-    }
-    return { from, to };
-  }
-
   function loadRange() {
     try {
       const raw = localStorage.getItem(RANGE_KEY);
       if (raw) {
         const r = JSON.parse(raw);
-        if (r && r.from && r.to) return clampRange(r.from, r.to);
+        if (r && r.from && r.to) return util.clampRange(r.from, r.to, MAX_RANGE_DAYS);
       }
     } catch (e) {}
     return thisWeekRange();
@@ -48,8 +39,7 @@
 
   function setRange(field, value) {
     if (!value) return;
-    range = clampRange(field === 'from' ? value : range.from,
-                       field === 'to'   ? value : range.to);
+    range = util.editRange(range, field, value, MAX_RANGE_DAYS);
     saveRange();
     render();
   }
@@ -75,6 +65,17 @@
   }
 
   // ============ RENDER ============
+  // 某一天时间线上要画的东西。全天 / 跨天的带子单独排在最上面，所以这里只剩有时段的。
+  // 有时段的跨天任务挂在起始日那一格，但覆盖到的每一天都要出现 ——
+  // 每一行是「任务 + 它挂在哪一格」：改它得回那一格，勾的却是你看到的这一天。
+  function timeRowsFor(date) {
+    const mine = (store.get().tasks[date] || []).filter(t => !t.allDay)
+      .map(t => ({ t, home: date }));
+    const spilled = PB.span.timedCovering(store.get().tasks, date)
+      .map(t => ({ t, home: t.date }));
+    return mine.concat(spilled);
+  }
+
   function render() {
     const container = document.getElementById('dayContainer');
     const dates = rangeDates();
@@ -86,10 +87,14 @@
     document.getElementById('projectTitle').textContent = store.get().config.projectName;
 
     const todayStr = util.toDateStr(new Date());
+    const spans = PB.span.allSpans(store.get().tasks);
     for (const day of days) {
-      const dayTasks = store.get().tasks[day.date] || [];
-      const dayDone = dayTasks.filter(t => t.done).length;
-      total += dayTasks.length;
+      const rows = timeRowsFor(day.date);
+      const daySpans = spans.filter(t => PB.span.coversDay(t, day.date));
+      const dayCount = rows.length + daySpans.length;
+      const dayDone = rows.filter(r => PB.span.isDoneDay(r.t, day.date)).length
+                    + daySpans.filter(t => PB.span.isDoneDay(t, day.date)).length;
+      total += dayCount;
       done += dayDone;
       const isPast = day.date < todayStr;
 
@@ -109,11 +114,12 @@
             <span class="weekday">周${day.weekday}</span>
           </span>
           ${util.isToday(day.date) ? '<span class="day-badge today-badge">今天</span>' : ''}
-          <span class="day-check-count">${dayDone}/${dayTasks.length}</span>
+          <span class="day-check-count">${dayDone}/${dayCount}</span>
         </div>
         <div class="day-content">
-          ${dayTasks.length === 0 ? '<div class="empty-day-msg">暂无安排 · 点击下方添加</div>' : ''}
-          ${dayTasks.map((t, idx) => renderTask(t, day.date)).join('')}
+          ${daySpans.map(t => renderSpanRow(t, day.date)).join('')}
+          ${dayCount === 0 ? '<div class="empty-day-msg">暂无安排 · 点击下方添加</div>' : ''}
+          ${rows.map(r => renderTask(r.t, r.home, day.date)).join('')}
           <div class="day-dropzone"></div>
           <button class="add-task-btn" onclick="addTask('${day.date}')">+ 添加任务</button>
         </div>
@@ -136,13 +142,16 @@
 
   function renderOverview(days) {
     const bar = document.getElementById('overviewBar');
+    const spans = PB.span.allSpans(store.get().tasks);
+    // 跨天任务在它覆盖到的每一天各算一次，跟每天那个 x/y 的口径一致
+    const byDay = days.map(day =>
+      timeRowsFor(day.date).map(r => r.t)
+        .concat(spans.filter(t => PB.span.coversDay(t, day.date))));
+
     let html = `<span class="overview-item"><span style="font-weight:600;">${days.length}</span> 天</span>`;
     for (const sub of store.get().config.subjects) {
       let count = 0;
-      for (const day of days) {
-        const dayTasks = store.get().tasks[day.date] || [];
-        count += dayTasks.filter(t => t.subject === sub.id).length;
-      }
+      for (const list of byDay) count += list.filter(t => t.subject === sub.id).length;
       html += `<span class="overview-item">
       <span class="dot" style="background:${sub.color}"></span>
       ${sub.label} <span class="count">${count}</span>
@@ -151,45 +160,97 @@
     bar.innerHTML = html;
   }
 
-  function renderTask(t, date) {
+  // 分类下拉在时间线和全天行里长得一样，只有「拿哪个日期当存储键」不同
+  function subjectSelectHtml(t, key) {
     const sub = store.subjectLabel(t.subject);
-    const doneCls = t.done ? 'completed' : '';
-    const subStyle = `background:${sub.color}22; color:${sub.color}; border-color:${sub.color}33`;
-    return `<div class="task-card ${doneCls}" draggable="true"
-       data-task-id="${t.id}" data-date="${date}"
-       ondragstart="onDragStart(event)" ondragend="onDragEnd(event)"
+    const sel = `background:${sub.color}22; color:${sub.color}; border-color:${sub.color}33`;
+    return `<select class="subject-tag" style="${sel}" onchange="updateSubject('${key}','${t.id}',this.value)">
+      ${store.get().config.subjects.map(s => {
+        const st = `background:${s.color}22; color:${s.color}; border-color:${s.color}33`;
+        return `<option value="${s.id}" ${s.id === t.subject ? 'selected' : ''} style="${st}">${s.label}</option>`;
+      }).join('')}
+    </select>`;
+  }
+
+  // home = 它挂在哪个桶里（改内容 / 改时间 / 删除都按这个找）；
+  // shown = 这一行现在显示在哪一天（勾的是这一天）。单天任务两者相同。
+  function renderTask(t, home, shown) {
+    const multi = PB.span.isMultiDay(t);
+    const done = PB.span.isDoneDay(t, shown);
+    const doneCls = done ? 'completed' : '';
+    // 跨天的那行不给拖（拖走一块该动的是范围），所以连 draggable 属性都不给它
+    const dragAttrs = multi ? '' : `draggable="true" onmousedown="onTaskMouseDown(event)"
+       ondragstart="onDragStart(event)" ondragend="onDragEnd(event)"`;
+    // 跨天且「每天都要做」→ 勾这一天；其余一个整体勾
+    const onCheck = PB.span.isPerDay(t)
+      ? `toggleSpanDay('${home}','${shown}','${t.id}',this.checked)`
+      : `toggleDone('${home}','${t.id}',this.checked)`;
+    const range = multi
+      ? `<span class="span-range" title="这条横跨 ${t.date} 至 ${t.to}">${
+          util.formatShortDate(t.date)}–${util.formatShortDate(t.to)}</span>`
+      : '';
+    return `<div class="task-card ${doneCls}${multi ? ' multi' : ''}" ${dragAttrs}
+       data-task-id="${t.id}" data-date="${shown}"
        ondragover="onDragOver(event)" ondrop="onDropOnTask(event)"
        ondragenter="onDragEnter(event)" ondragleave="onDragLeave(event)">
     <span class="drag-handle">⠿</span>
     <label class="task-check">
-      <input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleDone('${date}','${t.id}',this.checked)">
+      <input type="checkbox" ${done ? 'checked' : ''} onchange="${onCheck}">
     </label>
     <span class="task-time">
       <span class="time-field" data-field="start" onkeydown="PB.util.timeKeydown(event)">
         <input type="text" class="time-text" inputmode="numeric" maxlength="5"
-          value="${util.attr(t.start)}" onchange="updateTime('${date}','${t.id}','start',this)">
+          value="${util.attr(t.start)}" onchange="updateTime('${home}','${t.id}','start',this)">
         <input type="time" class="time-native" tabindex="-1"
-          value="${util.attr(t.start)}" onchange="updateTime('${date}','${t.id}','start',this)">
+          value="${util.attr(t.start)}" onchange="updateTime('${home}','${t.id}','start',this)">
       </span>
       <span class="sep">–</span>
       <span class="time-field" data-field="end" onkeydown="PB.util.timeKeydown(event)">
         <input type="text" class="time-text" inputmode="numeric" maxlength="5"
-          value="${util.attr(t.end)}" onchange="updateTime('${date}','${t.id}','end',this)">
+          value="${util.attr(t.end)}" onchange="updateTime('${home}','${t.id}','end',this)">
         <input type="time" class="time-native" tabindex="-1"
-          value="${util.attr(t.end)}" onchange="updateTime('${date}','${t.id}','end',this)">
+          value="${util.attr(t.end)}" onchange="updateTime('${home}','${t.id}','end',this)">
       </span>
     </span>
-    <span class="task-subject">
-      <select class="subject-tag" style="${subStyle}" onchange="updateSubject('${date}','${t.id}',this.value)">
-        ${store.get().config.subjects.map(s => {
-          const st = `background:${s.color}22; color:${s.color}; border-color:${s.color}33`;
-          return `<option value="${s.id}" ${s.id === t.subject ? 'selected' : ''} style="${st}">${s.label}</option>`;
-        }).join('')}
-      </select>
-    </span>
-    <span class="task-text" contenteditable="true" data-date="${date}" data-task-id="${t.id}"
-          onblur="updateText('${date}','${t.id}',this.textContent)">${util.escapeHtml(t.text)}</span>
-    <button class="task-delete" onclick="deleteTask('${date}','${t.id}')" title="删除">✕</button>
+    <span class="task-subject">${subjectSelectHtml(t, home)}</span>
+    <span class="task-text" contenteditable="true" data-date="${home}" data-task-id="${t.id}"
+          onblur="updateText('${home}','${t.id}',this.textContent)">${util.escapeHtml(t.text)}</span>
+    ${range}
+    <button class="task-delete" onclick="deleteTask('${home}','${t.id}')" title="删除">✕</button>
+  </div>`;
+  }
+
+  // 全天 / 跨天任务排在当天最上面。勾的是「这一天」，所以一条横跨五天的任务
+  // 会在那五天里各出现一行 —— 勾哪一行就是勾哪一天，改内容改的却是同一条。
+  // 只占一天的那种可以拖到别的日子（今天的不想做了，挪到明天）；
+  // 跨天的不给 draggable：拖走一条跨天任务，该动的是范围，不是某一格。
+  function renderSpanRow(t, date) {
+    const r = PB.span.spanRange(t);
+    const single = r.from === r.to;
+    const done = PB.span.isDoneDay(t, date);
+    const range = single ? ''
+      : `<span class="span-range" title="这条横跨 ${r.from} 至 ${r.to}">${
+          util.formatShortDate(r.from)}–${util.formatShortDate(r.to)}</span>`;
+    const dragAttrs = single
+      ? `draggable="true" onmousedown="onTaskMouseDown(event)"
+       ondragstart="onDragStart(event)" ondragend="onDragEnd(event)"
+       ondragover="onDragOver(event)" ondrop="onDropOnTask(event)"
+       ondragenter="onDragEnter(event)" ondragleave="onDragLeave(event)"`
+      : '';
+    return `<div class="task-card allday${done ? ' completed' : ''}"
+       data-task-id="${t.id}" data-date="${date}"
+       style="--sub-color:${store.subjectLabel(t.subject).color}" ${dragAttrs}>
+    <span class="drag-handle" title="${single ? '拖到别的日子' : '跨天的任务不跟着拖'}">⠿</span>
+    <label class="task-check">
+      <input type="checkbox" ${done ? 'checked' : ''}
+        onchange="toggleSpanDay('${t.date}','${date}','${t.id}',this.checked)">
+    </label>
+    <span class="task-time">全天</span>
+    <span class="task-subject">${subjectSelectHtml(t, t.date)}</span>
+    <span class="task-text" contenteditable="true" data-date="${t.date}" data-task-id="${t.id}"
+          onblur="updateText('${t.date}','${t.id}',this.textContent)">${util.escapeHtml(t.text)}</span>
+    ${range}
+    <button class="task-delete" onclick="deleteTask('${t.date}','${t.id}')" title="删除">✕</button>
   </div>`;
   }
 
@@ -197,6 +258,14 @@
   function toggleDone(date, id, checked) {
     const t = store.get().tasks[date].find(x => x.id === id);
     if (t) { t.done = checked; store.save(); render(); }
+  }
+
+  // homeDate 是它挂在存储里的那一天（起始日），date 是这一行显示的哪天
+  function toggleSpanDay(homeDate, date, id, checked) {
+    const t = (store.get().tasks[homeDate] || []).find(x => x.id === id);
+    if (!t) return;
+    PB.span.setDoneDay(t, date, checked);
+    store.save(); render();
   }
 
   // el 是刚 change 的那个框：文本框自己打的，或原生选择器选的
@@ -227,7 +296,7 @@
     if (!store.get().tasks[date]) store.get().tasks[date] = [];
     const id = 't' + Date.now() + Math.random().toString(36).slice(2, 5);
     store.get().tasks[date].push({
-      id, start: '09:00', end: '10:00',
+      id, date, start: '09:00', end: '10:00',
       subject: store.get().config.subjects[0]?.id || 'other',
       text: '新任务', done: false
     });
@@ -243,7 +312,19 @@
   }
 
   // ============ DRAG & DROP ============
+  // 在输入框 / 文字编辑区里按下时先把卡片自己的 draggable 摘掉，
+  // 否则选文字、放光标会被当成拖动整张卡片，表现成「点了没反应 / 光标不在点的地方」。
+  // 跨天的那行全天任务压根没有 draggable 属性，所以这里先看它原本给不给拖 ——
+  // 直接设 draggable = true 会把不给拖的那行也变成可拖的。
+  function onTaskMouseDown(e) {
+    const card = e.target.closest('.task-card');
+    if (!card || !card.hasAttribute('draggable')) return;
+    const interactive = e.target.closest('input, textarea, select, button, [contenteditable="true"]');
+    card.draggable = !interactive;
+  }
+
   function onDragStart(e) {
+    if (!e.currentTarget.draggable) { e.preventDefault(); return; }
     const card = e.target.closest('.task-card');
     if (!card) return;
     dragSource = { id: card.dataset.taskId, date: card.dataset.date };
@@ -327,22 +408,7 @@
 
   // 把任务从 srcDate 移到 targetDate；beforeId 为 null 时追加到末尾
   function moveTaskToDate(srcDate, taskId, targetDate, beforeId) {
-    const srcArr = store.get().tasks[srcDate];
-    if (!srcArr) return;
-    const srcIdx = srcArr.findIndex(x => x.id === taskId);
-    if (srcIdx === -1) return;
-
-    const [moved] = srcArr.splice(srcIdx, 1);
-    if (srcArr.length === 0) delete store.get().tasks[srcDate];
-
-    if (!store.get().tasks[targetDate]) store.get().tasks[targetDate] = [];
-    if (beforeId) {
-      const tgtIdx = store.get().tasks[targetDate].findIndex(x => x.id === beforeId);
-      store.get().tasks[targetDate].splice(tgtIdx === -1 ? store.get().tasks[targetDate].length : tgtIdx, 0, moved);
-    } else {
-      store.get().tasks[targetDate].push(moved);
-    }
-
+    if (!store.moveTaskTo(store.get().tasks, srcDate, taskId, targetDate, beforeId)) return;
     store.save(); render();
     showToast(`已移动到 ${util.formatDateLabel(targetDate)}`);
   }
@@ -363,10 +429,12 @@
   function expandAll() { document.querySelectorAll('.day-header').forEach(h => h.classList.remove('collapsed')); }
 
   const api = {
-    render, renderOverview, renderTask,
+    render, renderOverview, renderTask, renderSpanRow,
     prevWeek, nextWeek, gotoThisWeek, setRange,
-    toggleDone, updateTime, updateSubject, updateText, deleteTask, addTask,
-    onDragStart, onDragEnd, onDragOver, onDragEnter, onDragLeave,
+    // 导出弹窗拿它当默认区间：正在看哪段就导哪段
+    get range() { return Object.assign({}, range); },
+    toggleDone, toggleSpanDay, updateTime, updateSubject, updateText, deleteTask, addTask,
+    onTaskMouseDown, onDragStart, onDragEnd, onDragOver, onDragEnter, onDragLeave,
     onDragEnterDay, onDragLeaveDay, onDropOnTask, onDropOnDay,
     showToast, toggleDay, collapseAll, expandAll
   };

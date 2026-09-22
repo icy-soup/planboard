@@ -3,6 +3,7 @@
   const PB = (globalThis.PB = globalThis.PB || {});
   const util = PB.util;
   const store = PB.store;
+  const transfer = PB.transfer;
 
   // ============ SETTINGS ============
   const hasDesktopAPI = () => !!(typeof window !== 'undefined' && window.planboardAPI?.app);
@@ -20,8 +21,9 @@
     document.getElementById('desktopHint').style.display = hasDesktopAPI() ? 'none' : '';
     renderSubjectList();
     document.getElementById('settingsModal').classList.add('open');
-    // 下面两步要问主进程，先让弹窗出来再填
+    // 下面几步要问主进程，先让弹窗出来再填
     refreshKeyStatus();
+    refreshDataDir();
     openMemory(activeMemory);
   }
 
@@ -83,6 +85,18 @@
     else api.setCloseToTray(!!on);
   }
 
+  // 开发版写项目旁的 data/，安装版写 %APPDATA%，两者互不相通。
+  // 把真实路径摆出来，省得再遇到「打开是空的，我的东西怎么没了」。
+  async function refreshDataDir() {
+    const el = document.getElementById('dataDirHint');
+    if (!el) return;
+    if (!hasDesktopAPI()) {
+      el.textContent = '数据目录：浏览器 localStorage（桌面版会写到程序旁的 data/）';
+      return;
+    }
+    el.textContent = '数据目录：' + (await window.planboardAPI.app.dataDir());
+  }
+
   // ============ API KEY ============
   async function refreshKeyStatus() {
     const el = document.getElementById('apiKeyStatus');
@@ -114,20 +128,35 @@
   let activeMemory = PB.memory.FILES[0].name;
   let memoryDoc = null;      // 当前编辑器里装的是哪一份
   let memoryTimer = null;
+  const memoryContents = {}; // name -> 已落盘的正文，用来判断这份是不是空的
 
-  function renderMemoryTabs() {
+  async function loadMemoryContents() {
+    const texts = await Promise.all(PB.memory.FILES.map(f => PB.memory.read(f.name)));
+    PB.memory.FILES.forEach((f, i) => { memoryContents[f.name] = texts[i] || ''; });
+  }
+
+  // 开关开着但文件是空的，AI 那边一个字节都收不到 —— 标出来，别让开关说谎
+  function paintMemoryTabs() {
     const el = document.getElementById('memoryTabs');
     if (!el) return;
     const enabled = store.get().config.settings.ai.memoryEnabled || {};
-    el.innerHTML = PB.memory.FILES.map(f =>
-      `<button class="memory-tab${f.name === activeMemory ? ' active' : ''}"
+    el.innerHTML = PB.memory.FILES.map(f => {
+      let badge = '';
+      if (!enabled[f.name]) badge = '<span class="memory-off">不发</span>';
+      else if (!(memoryContents[f.name] || '').trim()) badge = '<span class="memory-off">空</span>';
+      return `<button class="memory-tab${f.name === activeMemory ? ' active' : ''}"
         title="${util.attr(f.desc)}"
-        onclick="PB.settings.openMemory('${f.name}')">${f.label}${
-          enabled[f.name] ? '' : '<span class="memory-off">不发</span>'}</button>`).join('');
+        onclick="PB.settings.openMemory('${f.name}')">${f.label}${badge}</button>`;
+    }).join('');
+  }
+
+  async function renderMemoryTabs() {
+    await loadMemoryContents();
+    paintMemoryTabs();
   }
 
   async function openMemory(name) {
-    flushMemory();               // 先把上一份没落盘的敲进去
+    await flushMemory();         // 先把上一份没落盘的敲进去，免得读回旧内容
     activeMemory = name;
     memoryDoc = name;
 
@@ -135,11 +164,10 @@
     const enabled = store.get().config.settings.ai.memoryEnabled || {};
     document.getElementById('memoryEnabled').checked = !!enabled[name];
     document.getElementById('memoryHint').textContent = `${name}.md — ${file.desc}`;
-    renderMemoryTabs();
 
-    const text = await PB.memory.read(name);
+    await renderMemoryTabs();
     if (memoryDoc !== name) return;   // 等待期间用户又切走了
-    document.getElementById('memoryText').value = text;
+    document.getElementById('memoryText').value = memoryContents[name] || '';
   }
 
   function onMemoryInput() {
@@ -149,8 +177,12 @@
 
   function flushMemory() {
     if (memoryTimer) { clearTimeout(memoryTimer); memoryTimer = null; }
-    if (!memoryDoc) return;
-    PB.memory.write(memoryDoc, document.getElementById('memoryText').value);
+    if (!memoryDoc) return Promise.resolve();
+    const name = memoryDoc;
+    const text = document.getElementById('memoryText').value;
+    memoryContents[name] = text;
+    paintMemoryTabs();
+    return PB.memory.write(name, text);
   }
 
   function setMemoryEnabled(on) {
@@ -248,41 +280,189 @@
     if (s) { s.color = color; store.save(); renderSubjectList(); PB.list.render(); }
   }
 
-  // ============ EXPORT / IMPORT ============
-  function exportJSON() {
-    const data = { version: 1, exportedAt: new Date().toISOString(), config: store.get().config, tasks: store.get().tasks };
+  // ============ EXPORT ============
+  // 导出哪一段、带不带课表 / 设置 / 备忘录，都在弹窗里选，选完才真的下载。
+  // 默认区间取列表视图正在看的那一段 —— 「正在看哪段就导哪段」。
+  // API Key 在 secrets.json 里、个人背景记忆在 data/memory/ 里，都不进这个文件。
+  function openExport() {
+    const r = (PB.list && PB.list.range) || null;
+    if (r) {
+      document.getElementById('exportFrom').value = r.from;
+      document.getElementById('exportTo').value = r.to;
+    }
+    document.getElementById('exportAll').checked = false;
+    syncExportAll();
+    document.getElementById('exportModal').classList.add('open');
+  }
+
+  // 勾了「全部」就把两个日期框停掉，免得两处打架
+  function syncExportAll() {
+    const off = document.getElementById('exportAll').checked;
+    document.getElementById('exportFrom').disabled = off;
+    document.getElementById('exportTo').disabled = off;
+  }
+
+  function cancelExport() {
+    document.getElementById('exportModal').classList.remove('open');
+  }
+
+  function onExportOverlayClick(e) {
+    if (e.target.classList.contains('modal-overlay')) cancelExport();
+  }
+
+  function confirmExport() {
+    const all = document.getElementById('exportAll').checked;
+    const from = all ? null : document.getElementById('exportFrom').value;
+    const to = all ? null : document.getElementById('exportTo').value;
+
+    if (!all && (!from || !to)) {
+      alert('先选起始日期和结束日期，或者勾上「全部」。');
+      return;
+    }
+    if (!all && from > to) {
+      alert('起始日期不能晚于结束日期。');
+      return;
+    }
+
+    const data = transfer.sliceForExport(store.get(), from, to, {
+      templates: document.getElementById('exportTemplates').checked,
+      config: document.getElementById('exportConfig').checked,
+      memos: document.getElementById('exportMemos').checked
+    });
+    data.exportedAt = new Date().toISOString();
+
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `planboard-${util.todayStr()}.json`;
+    a.download = all ? `planboard-${util.todayStr()}.json`
+                     : `planboard-${from}_${to}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    PB.list.showToast('已导出');
+
+    cancelExport();
+    const n = transfer.describeSlice(data.tasks);
+    PB.list.showToast(`已导出 ${n.count} 条（跨 ${n.days} 天）`);
+  }
+
+  // ============ IMPORT ============
+
+  let pendingImport = null;     // 解析好的文件，等用户在弹窗里选合并还是覆盖
+  let importNote = '';          // 文件形状有点怪但收编回来了，这句话要显示在弹窗里
+
+  // 先把「现有多少 / 文件里多少」摆出来，别让人闭着眼点覆盖。
+  // 文件里没带的类别不列 —— 列出来反而像「覆盖会把它清掉」。
+  function importSummary(data) {
+    const st = store.get();
+    const head = 'color:var(--text-muted);font-size:11px;';
+    const cell = 'padding:2px 0;';
+    const fileTasks = transfer.describeSlice(data.tasks);
+    const rows = [['任务', transfer.describeSlice(st.tasks).count,
+                   `${fileTasks.count} 条 / 跨 ${fileTasks.days} 天`]];
+    if (Array.isArray(data.templates)) {
+      rows.push(['课表模板', st.templates.length, data.templates.length]);
+    }
+    if (Array.isArray(data.memos)) {
+      rows.push(['备忘录', st.memos.length, data.memos.length]);
+    }
+    return (importNote
+      ? `<div style="font-size:12px;color:#b45309;margin-bottom:10px;">${util.escapeHtml(importNote)}</div>`
+      : '')
+      + `<div style="display:grid;grid-template-columns:1fr auto auto;gap:2px 16px;font-size:13px;margin-bottom:14px;">
+      <span style="${head}">类别</span><span style="${head}">现有</span><span style="${head}">文件里</span>
+      ${rows.map(r => `<span style="${cell}">${r[0]}</span>
+        <span style="${cell}text-align:right;">${r[1]}</span>
+        <span style="${cell}text-align:right;font-weight:600;">${r[2]}</span>`).join('')}
+    </div>`;
   }
 
   function importJSON(event) {
-    const file = event.target.files[0];
+    const input = event.target;
+    const file = input.files[0];
+    input.value = '';           // 清掉，同一个文件下次还能再选一次
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = function(e) {
-      try {
-        const data = JSON.parse(e.target.result);
-        if (data.config && data.tasks) {
-          store.get().config = data.config;
-          store.get().tasks = data.tasks;
-          store.save();
-          PB.list.render();
-          PB.list.showToast('已导入');
-        } else {
-          alert('无效的 PlanBoard 文件');
-        }
-      } catch(err) {
-        alert('文件解析失败');
+    reader.onload = function (e) {
+      let data;
+      try { data = JSON.parse(e.target.result); }
+      catch (err) { alert('文件解析失败'); return; }
+      // 形状体检挡在这里：读不懂的文件绝不能走到写盘那一步
+      const check = store.checkImport(data);
+      if (!check.ok) {
+        alert('这份文件导入不了：' + check.error + '\n\n现有数据没有改动。');
+        return;
       }
+      data.tasks = check.tasks;      // AI 容易把 tasks 写成数组，这里已按 date 归位
+      importNote = check.messages.join('；');
+
+      pendingImport = data;
+      document.getElementById('importFileName').textContent = file.name;
+      document.getElementById('importSummary').innerHTML = importSummary(data);
+      // 文件里带课表就默认勾上「连课表一起处理」；文件里没有就别无端动现有课表
+      document.getElementById('importTemplates').checked =
+        Array.isArray(data.templates) && data.templates.length > 0;
+      document.getElementById('importModal').classList.add('open');
     };
     reader.readAsText(file);
-    event.target.value = '';
+  }
+
+  function cancelImport() {
+    pendingImport = null;
+    importNote = '';
+    document.getElementById('importModal').classList.remove('open');
+  }
+
+  function onImportOverlayClick(e) {
+    if (e.target.classList.contains('modal-overlay')) cancelImport();
+  }
+
+  function doImport(mode) {
+    const file = pendingImport;
+    if (!file) return;
+    const st = store.get();
+    const withTemplates = document.getElementById('importTemplates').checked;
+
+    const merged = mode === 'overwrite'
+      ? {
+          // config 按字段合并：文件里少一项就把现有那项抹掉，风险太大。
+          // 覆盖导入想覆盖的是任务，不是把学期设置也清空
+          config: Object.assign({}, st.config, file.config),
+          // 只换文件里出现过的那几天，没导出的日期一条不动
+          tasks: transfer.replaceDays(st.tasks, file.tasks),
+          templates: (withTemplates && Array.isArray(file.templates)) ? file.templates : st.templates,
+          // 文件里没带备忘录就永远不动它
+          memos: Array.isArray(file.memos) ? file.memos : st.memos
+        }
+      : {
+          config: Object.assign({}, st.config, file.config),
+          tasks: transfer.mergeDays(st.tasks, file.tasks),
+          templates: withTemplates
+            ? transfer.mergeList(st.templates, file.templates || [])
+            : st.templates,
+          memos: transfer.mergeList(st.memos, file.memos || [])
+        };
+
+    // 过一遍 migrate：文件里缺的字段（settings.ai.memoryEnabled 之类）补默认值，
+    // 不过这一道，导入完点设置就会炸
+    const report = { messages: [], dataAtRisk: false };
+    const next = store.migrate(merged, report);
+    if (report.dataAtRisk) {     // 还有读不懂的就别写盘，宁可这次白导
+      alert('导入的内容里有读不懂的东西，没有写盘：\n' + report.messages.join('；'));
+      return;
+    }
+    st.config = next.config;
+    st.tasks = next.tasks;
+    st.templates = next.templates;
+    st.memos = next.memos;
+
+    store.save(true);            // 导入是整批写入，写盘前无条件先备一份
+    cancelImport();
+    openSettings();          // 顺带把设置页那些字段刷成导入后的值
+    PB.week.renderWeek();
+    PB.list.render();
+    PB.quadrant.render();
+    PB.memo.renderMemos();
+    PB.list.showToast(mode === 'overwrite' ? '已覆盖导入' : '已合并导入');
   }
 
   // ============ RESET ============
@@ -297,7 +477,10 @@
   const api = {
     openSettings, closeSettings, onOverlayClick, setSemester, renderSemesterHint,
     addSubject, deleteSubject,
-    startRename, renameKey, commitRename, updateSubjectColor, exportJSON, importJSON, resetPlan,
+    startRename, renameKey, commitRename, updateSubjectColor,
+    openExport, cancelExport, confirmExport, syncExportAll, onExportOverlayClick,
+    importJSON, resetPlan,
+    cancelImport, doImport, onImportOverlayClick,
     renderSubjectList,
     setDesktop, refreshKeyStatus, saveApiKey, clearApiKey,
     renderMemoryTabs, openMemory, onMemoryInput, flushMemory, setMemoryEnabled

@@ -5,6 +5,11 @@ const path = require('node:path');
 const backups = require('./backups.js');
 const { resolveDataDir, loginItemArgs } = require('./paths.js');
 
+// 只允许开一个实例：每个实例都拿着自己那份内存状态，后关的那个会把先关的那个
+// 期间做的改动整份盖回去。第二个实例直接退出，改由已有窗口顶到前台。
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) app.quit();
+
 const ROOT = path.join(__dirname, '..');
 // 开发版沿用项目目录旁的 data/；打包版走 %APPDATA%\PlanBoard\data
 // （asar 是只读归档，写不进去，写盘会整条失败）
@@ -59,10 +64,10 @@ function readState() {
   return null;
 }
 
-function writeState(state) {
+function writeState(state, opts) {
   try {
     // 备份的是覆盖前那一份，所以要在写盘之前调
-    backups.backup(STATE_FILE, BACKUP_DIR, Date.now());
+    backups.backup(STATE_FILE, BACKUP_DIR, Date.now(), opts);
   } catch (err) {
     // 备份失败不阻断主写入
     console.error('备份失败：', err.message);
@@ -136,6 +141,10 @@ function createWindow() {
     width: 960,
     height: 720,
     backgroundColor: '#f6f7f9',
+    // 不设的话，开发版的窗口和任务栏用的是 Electron 默认图标。
+    // 只在开发版设：build/ 不在 build.files 白名单里，打包后 asar 内没有这个文件，
+    // 打包版用的是 electron-builder 嵌进 exe 的那份。
+    ...(app.isPackaged ? {} : { icon: path.join(ROOT, 'build', 'icon.ico') }),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -208,9 +217,9 @@ ipcMain.on('storage:read', (event) => {
   event.returnValue = { state, notice };
 });
 
-ipcMain.on('storage:write', (event, state) => {
+ipcMain.on('storage:write', (event, state, opts) => {
   try {
-    writeState(state);
+    writeState(state, opts);
     event.returnValue = true;
   } catch (err) {
     console.error('写入 planboard.json 失败：', err.message);
@@ -250,6 +259,9 @@ ipcMain.handle('secrets:clear', () => {
   return true;
 });
 
+// 开发版和安装版用的是两个不同的数据目录，设置页要把真实路径显示出来
+ipcMain.handle('app:dataDir', () => DATA_DIR);
+
 ipcMain.handle('memory:read', (event, name) => readMemory(name));
 ipcMain.handle('memory:write', (event, name, text) => { writeMemory(name, text); return true; });
 ipcMain.handle('memory:list', () => MEMORY_FILES.map(name => ({ name, text: readMemory(name) })));
@@ -257,20 +269,26 @@ ipcMain.handle('memory:list', () => MEMORY_FILES.map(name => ({ name, text: read
 ipcMain.handle('ai:chat', (event, messages, opts) => chat(messages, opts));
 
 // ============ 生命周期 ============
-app.whenReady().then(() => {
-  applyStoredSettings();
-  createWindow();
-});
+// 没拿到锁的实例已经在上面 quit 了，这些监听没必要再挂
+if (gotLock) {
+  // 又开一次时，把已经开着的那个窗口顶到前台
+  app.on('second-instance', () => showWindow());
 
-app.on('before-quit', () => { quitting = true; });
+  app.whenReady().then(() => {
+    applyStoredSettings();
+    createWindow();
+  });
 
-app.on('window-all-closed', () => {
-  // 开了托盘常驻就把应用留在托盘里，否则关窗即退出
-  if (closeToTray || process.platform === 'darwin') return;
-  app.quit();
-});
+  app.on('before-quit', () => { quitting = true; });
 
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  else showWindow();
-});
+  app.on('window-all-closed', () => {
+    // 开了托盘常驻就把应用留在托盘里，否则关窗即退出
+    if (closeToTray || process.platform === 'darwin') return;
+    app.quit();
+  });
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    else showWindow();
+  });
+}
