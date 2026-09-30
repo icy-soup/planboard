@@ -30,16 +30,20 @@
         projectName: '📋 PlanBoard',
         semesterStart: null,
         semesterEnd: null,
+        timelineStart: null,
+        timelineEnd: null,
         subjects: JSON.parse(JSON.stringify(DEFAULT_SUBJECTS)),
         settings: {
           openAtLogin: false,
           closeToTray: false,
+          visibleViews: ['week', 'list', 'timeline', 'quadrant', 'memo'],
           ai: JSON.parse(JSON.stringify(DEFAULT_AI_SETTINGS))
         }
       },
       tasks: {},
       templates: [],
-      memos: []
+      memos: [],
+      timeline: []
     };
   }
 
@@ -103,18 +107,22 @@
         // 新字段缺失时用默认值，已有值保留
         semesterStart: inConfig.semesterStart !== undefined ? inConfig.semesterStart : base.config.semesterStart,
         semesterEnd: inConfig.semesterEnd !== undefined ? inConfig.semesterEnd : base.config.semesterEnd,
+        timelineStart: inConfig.timelineStart !== undefined ? inConfig.timelineStart : base.config.timelineStart,
+        timelineEnd: inConfig.timelineEnd !== undefined ? inConfig.timelineEnd : base.config.timelineEnd,
         subjects: Array.isArray(inConfig.subjects) && inConfig.subjects.length
           ? inConfig.subjects : base.config.subjects,
         settings: {
           ...base.config.settings,
           ...inSettings,
+          visibleViews: Array.isArray(inSettings.visibleViews) && inSettings.visibleViews.length ? inSettings.visibleViews : base.config.settings.visibleViews,
           ai: { ...DEFAULT_AI_SETTINGS, ...inAi,
                 memoryEnabled: { ...DEFAULT_AI_SETTINGS.memoryEnabled, ...(inAi.memoryEnabled || {}) } }
         }
       },
       tasks: normalizeTasks(raw.tasks, report),
       templates: normalizeList(raw.templates, 'templates', report),
-      memos: normalizeList(raw.memos, 'memos', report)
+      memos: normalizeList(raw.memos, 'memos', report),
+      timeline: normalizeList(raw.timeline, 'timeline', report)
     };
   }
 
@@ -129,10 +137,9 @@
         && (typeof data.config !== 'object' || Array.isArray(data.config))) {
       return { ok: false, error: 'config 不是对象' };
     }
-    if (data.tasks === undefined || data.tasks === null) {
-      return { ok: false, error: '缺 tasks' };
-    }
-    for (const name of ['templates', 'memos']) {
+    if ((data.tasks === undefined || data.tasks === null)
+        && (data.timeline === undefined || data.timeline === null)) return { ok: false, error: '缺 tasks 或 timeline' };
+    for (const name of ['templates', 'memos', 'timeline']) {
       const v = data[name];
       if (v !== undefined && v !== null && !Array.isArray(v)) {
         return { ok: false, error: `${name} 不是数组` };

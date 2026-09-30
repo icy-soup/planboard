@@ -89,6 +89,20 @@ test('replaceDays: 文件里某天是空数组就把那天清掉', () => {
   assert.strictEqual(out['2026-09-27'][0].id, 'keep');
 });
 
+test('replaceDays: 区间外的跨天补带日期只合并，不误删同日其它任务', () => {
+  const cur = {
+    '2026-09-19': [{ id: 'other' }, { id: 'span', text: '旧' }],
+    '2026-09-20': [{ id: 'old' }]
+  };
+  const out = transfer.replaceDays(cur, {
+    '2026-09-19': [{ id: 'span', text: '新' }],
+    '2026-09-20': [{ id: 'new' }]
+  }, { from: '2026-09-20', to: '2026-09-25' });
+  assert.deepStrictEqual(out['2026-09-19'].map(t => t.id), ['other', 'span']);
+  assert.strictEqual(out['2026-09-19'][1].text, '新');
+  assert.deepStrictEqual(out['2026-09-20'].map(t => t.id), ['new']);
+});
+
 // ===== 导入：合并 =====
 
 test('mergeDays: 同一天里按 id 顶掉，文件里多出来的追加在后面', () => {

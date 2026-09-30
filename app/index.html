@@ -20,6 +20,7 @@
       <h1 id="projectTitle">📋 PlanBoard</h1>
     </div>
     <div class="header-actions">
+      <button class="btn" onclick="location.reload()" title="重新加载界面文件，不退出应用">⟳ 刷新界面</button>
       <button class="btn" onclick="openSettings()">⚙ 设置</button>
       <button class="btn" onclick="openExport()">⬇ 导出</button>
       <button class="btn" onclick="document.getElementById('importFile').click()">⬆ 导入</button>
@@ -29,7 +30,8 @@
 
   <nav class="tabs" id="tabs">
     <button class="tab active" data-view="week">周视图</button>
-    <button class="tab" data-view="list">列表视图</button>
+    <button class="tab" data-view="list">时间轴</button>
+    <button class="tab" data-view="timeline">里程碑</button>
     <button class="tab" data-view="quadrant">四象限</button>
     <button class="tab" data-view="memo">备忘录</button>
   </nav>
@@ -77,6 +79,24 @@
     <div class="shortcuts">
       <kbd>Ctrl+Enter</kbd> 确认编辑 &nbsp;·&nbsp; <kbd>Esc</kbd> 取消编辑 &nbsp;·&nbsp; 拖拽卡片可排序/跨日移动
     </div>
+  </section>
+
+  <section class="view" id="view-timeline" style="display:none">
+    <div class="timeline-toolbar">
+      <span class="list-label">长期节点</span>
+      <span class="timeline-range">显示范围：<input id="timelineRangeFrom" type="month" onchange="PB.timeline.setRange()"> – <input id="timelineRangeTo" type="month" onchange="PB.timeline.setRange()"></span>
+      <button class="btn btn-primary" onclick="PB.timeline.showForm()">+ 添加节点</button>
+    </div>
+    <div id="timelineForm" class="timeline-form" style="display:none">
+      <input id="timelineTitle" type="text" placeholder="节点名称，例如：期末考试周">
+      <label>日期 <input id="timelineFrom" type="date"></label>
+      <input id="timelineNote" type="text" placeholder="说明（可选）">
+      <input id="timelineColor" type="color" value="#3b82f6" title="颜色">
+      <label class="edit-check" style="margin:0"><input id="timelineImportant" type="checkbox" checked> 重要</label>
+      <button class="btn btn-primary" onclick="PB.timeline.save()">保存</button>
+      <button class="btn" onclick="PB.timeline.hideForm()">取消</button>
+    </div>
+    <div id="timelineBoard" class="timeline-board"></div>
   </section>
 
   <section class="view" id="view-quadrant">
@@ -163,6 +183,12 @@
       </div>
     </div>
 
+    <div class="modal-section">
+      <h3>功能显示</h3>
+      <div id="viewVisibility" class="form-row"></div>
+      <div class="form-hint">取消勾选只会收起顶部入口，不会删除对应数据。</div>
+    </div>
+
     <div class="modal-section" id="desktopSection">
       <h3>桌面版</h3>
       <label class="edit-check"><input type="checkbox" id="setOpenAtLogin"
@@ -233,6 +259,7 @@
     <label class="edit-check"><input type="checkbox" id="exportTemplates"> 包含课表模板</label>
     <label class="edit-check"><input type="checkbox" id="exportConfig"> 包含设置（学期起止 / 分类）</label>
     <label class="edit-check"><input type="checkbox" id="exportMemos"> 包含备忘录</label>
+    <label class="edit-check"><input type="checkbox" id="exportTimeline" checked> 包含里程碑</label>
     <div class="form-hint">
       任务按天筛：区间外的日期不会进文件。跨天任务只要有一段落在区间里就会带上。
       不含 API Key（那是 secrets.json）和个人背景记忆。
@@ -301,6 +328,7 @@
 <script src="js/view-list.js"></script>
 <script src="js/view-week.js"></script>
 <script src="js/memo.js"></script>
+<script src="js/timeline.js"></script>
 <script src="js/quadrant.js"></script>
 <script src="js/settings.js"></script>
 <script src="js/tpl-cal.js"></script>

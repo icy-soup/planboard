@@ -20,6 +20,7 @@
     document.getElementById('configApiKey').value = '';
     document.getElementById('desktopHint').style.display = hasDesktopAPI() ? 'none' : '';
     renderSubjectList();
+    renderViewVisibility();
     document.getElementById('settingsModal').classList.add('open');
     // 下面几步要问主进程，先让弹窗出来再填
     refreshKeyStatus();
@@ -33,11 +34,14 @@
     const semesterStart = document.getElementById('configSemesterStart').value;
     const semesterEnd = document.getElementById('configSemesterEnd').value;
     const model = document.getElementById('configAiModel').value.trim();
+    const selectedViews = [...document.querySelectorAll('#viewVisibility input[data-view]:checked')].map(x => x.dataset.view);
 
     if (name) store.get().config.projectName = name;
     store.get().config.semesterStart = semesterStart || null;
     store.get().config.semesterEnd = semesterEnd || null;
     if (model) store.get().config.settings.ai.model = model;
+    if (selectedViews.length) store.get().config.settings.visibleViews = selectedViews;
+    document.querySelectorAll('#tabs .tab').forEach(b => { b.hidden = !selectedViews.includes(b.dataset.view); });
     flushMemory();
 
     store.save();
@@ -45,6 +49,13 @@
     PB.list.render();
     PB.week.renderWeek();
     PB.list.showToast('设置已保存');
+  }
+
+  function renderViewVisibility() {
+    const el = document.getElementById('viewVisibility'); if (!el) return;
+    const names = { week: '周视图', list: '任务时间轴', timeline: '里程碑', quadrant: '四象限', memo: '备忘录' };
+    const visible = store.get().config.settings.visibleViews || Object.keys(names);
+    el.innerHTML = Object.entries(names).map(([id, name]) => `<label class="edit-check" style="margin:0 12px 0 0;"><input type="checkbox" data-view="${id}" ${visible.includes(id) ? 'checked' : ''}> ${name}</label>`).join('');
   }
 
   // 点遮罩关掉设置，和课表日历 / 任务编辑保持一致。
@@ -327,7 +338,8 @@
     const data = transfer.sliceForExport(store.get(), from, to, {
       templates: document.getElementById('exportTemplates').checked,
       config: document.getElementById('exportConfig').checked,
-      memos: document.getElementById('exportMemos').checked
+      memos: document.getElementById('exportMemos').checked,
+      timeline: document.getElementById('exportTimeline').checked
     });
     data.exportedAt = new Date().toISOString();
 
@@ -365,6 +377,9 @@
     if (Array.isArray(data.memos)) {
       rows.push(['备忘录', st.memos.length, data.memos.length]);
     }
+    if (Array.isArray(data.timeline)) {
+      rows.push(['里程碑', (st.timeline || []).length, data.timeline.length]);
+    }
     return (importNote
       ? `<div style="font-size:12px;color:#b45309;margin-bottom:10px;">${util.escapeHtml(importNote)}</div>`
       : '')
@@ -392,7 +407,7 @@
         alert('这份文件导入不了：' + check.error + '\n\n现有数据没有改动。');
         return;
       }
-      data.tasks = check.tasks;      // AI 容易把 tasks 写成数组，这里已按 date 归位
+      data.tasks = check.tasks;      // 没有 tasks 的里程碑文件保持为空，不会转成全天任务
       importNote = check.messages.join('；');
 
       pendingImport = data;
@@ -428,10 +443,11 @@
           // 覆盖导入想覆盖的是任务，不是把学期设置也清空
           config: Object.assign({}, st.config, file.config),
           // 只换文件里出现过的那几天，没导出的日期一条不动
-          tasks: transfer.replaceDays(st.tasks, file.tasks),
+          tasks: transfer.replaceDays(st.tasks, file.tasks, file.range),
           templates: (withTemplates && Array.isArray(file.templates)) ? file.templates : st.templates,
           // 文件里没带备忘录就永远不动它
-          memos: Array.isArray(file.memos) ? file.memos : st.memos
+          memos: Array.isArray(file.memos) ? file.memos : st.memos,
+          timeline: Array.isArray(file.timeline) ? file.timeline : st.timeline
         }
       : {
           config: Object.assign({}, st.config, file.config),
@@ -439,7 +455,8 @@
           templates: withTemplates
             ? transfer.mergeList(st.templates, file.templates || [])
             : st.templates,
-          memos: transfer.mergeList(st.memos, file.memos || [])
+          memos: transfer.mergeList(st.memos, file.memos || []),
+          timeline: transfer.mergeList(st.timeline || [], file.timeline || [])
         };
 
     // 过一遍 migrate：文件里缺的字段（settings.ai.memoryEnabled 之类）补默认值，
@@ -454,6 +471,7 @@
     st.tasks = next.tasks;
     st.templates = next.templates;
     st.memos = next.memos;
+    st.timeline = next.timeline;
 
     store.save(true);            // 导入是整批写入，写盘前无条件先备一份
     cancelImport();
@@ -475,7 +493,7 @@
   }
 
   const api = {
-    openSettings, closeSettings, onOverlayClick, setSemester, renderSemesterHint,
+    openSettings, closeSettings, onOverlayClick, setSemester, renderSemesterHint, renderViewVisibility,
     addSubject, deleteSubject,
     startRename, renameKey, commitRename, updateSubjectColor,
     openExport, cancelExport, confirmExport, syncExportAll, onExportOverlayClick,

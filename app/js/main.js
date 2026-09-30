@@ -27,7 +27,7 @@
   });
 
   // ============ VIEW SWITCHING ============
-  const VIEWS = ['week', 'list', 'quadrant', 'memo'];
+  const VIEWS = ['week', 'list', 'timeline', 'quadrant', 'memo'];
   let activeView = 'week';
 
   function switchView(name) {
@@ -40,14 +40,22 @@
 
     document.getElementById('view-week').style.display = name === 'week' ? '' : 'none';
     document.getElementById('view-list').style.display = name === 'list' ? '' : 'none';
+    document.getElementById('view-timeline').style.display = name === 'timeline' ? '' : 'none';
     document.getElementById('view-quadrant').style.display = name === 'quadrant' ? '' : 'none';
     document.getElementById('view-memo').style.display = name === 'memo' ? '' : 'none';
 
     if (name === 'week') PB.week.renderWeek();
     if (name === 'list') PB.list.render();
+    if (name === 'timeline') PB.timeline.render();
     if (name === 'quadrant') PB.quadrant.render();
     if (name === 'memo') PB.memo.renderMemos();
     try { localStorage.setItem('pb_activeView', name); } catch (e) {}
+  }
+
+  function applyViewVisibility() {
+    const visible = PB.store.get().config.settings.visibleViews || VIEWS;
+    document.querySelectorAll('#tabs .tab').forEach(b => { b.hidden = !visible.includes(b.dataset.view); });
+    if (!visible.includes(activeView)) switchView(visible[0] || 'week');
   }
 
   document.getElementById('tabs').addEventListener('click', e => {
@@ -60,6 +68,7 @@
   try { saved = localStorage.getItem('pb_activeView') || 'week'; } catch (e) {}
   // 存储里的值可能失效（手工改过 / 旧版本留下的），必须回退到已知视图名
   switchView(VIEWS.includes(saved) ? saved : 'week');
+  applyViewVisibility();
 
   // 启动期的存储层消息（网页版数据迁移 / 数据文件损坏已恢复）
   if (PB.store.migratedFromV1) PB.list.showToast('已从网页版迁移数据');

@@ -217,6 +217,60 @@ body {
 .tab.active { background: var(--surface); color: var(--blue);
               box-shadow: var(--shadow); }
 
+.timeline-toolbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+.timeline-form { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:12px; margin-bottom:16px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); }
+.timeline-form input[type=text], .timeline-form input[type=date] { padding:7px 9px; border:1px solid var(--border); border-radius:6px; font:inherit; font-size:13px; }
+.timeline-form input[type=text] { min-width:170px; }
+.timeline-board { overflow-x:auto; padding:24px 8px 14px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); }
+.timeline-axis-wrap { position:relative; min-width:900px; padding:0 10px; }
+.timeline-years { position:relative; height:24px; }
+.timeline-year { position:absolute; transform:translateX(-50%); color:var(--text-secondary); font-size:12px; font-weight:700; }
+.timeline-year-line { position:absolute; top:24px; height:calc(var(--axis-height,250px) + 34px); width:1px; background:var(--border); z-index:0; }
+.timeline-scale { position:relative; height:34px; border-bottom:0; }
+.timeline-scale span { position:absolute; transform:translateX(-50%); font-size:11px; color:var(--text-muted); white-space:nowrap; }
+.timeline-axis { position:relative; width:100%; height:var(--axis-height,250px); background:repeating-linear-gradient(90deg, transparent 0, transparent calc(16.666% - 1px), #f1f5f9 calc(16.666% - 1px), #f1f5f9 16.666%); }
+.timeline-axis::before { content:""; position:absolute; left:0; right:0; top:50%; height:3px; transform:translateY(-50%); background:var(--text-secondary); border-radius:3px; }
+.timeline-axis::after { content:""; position:absolute; right:-1px; top:50%; width:0; height:0; transform:translateY(-50%); border-top:8px solid transparent; border-bottom:8px solid transparent; border-left:13px solid var(--blue); }
+.timeline-point { position:absolute; top:calc(50% - 9px); transform:translateX(-50%); width:1px; height:18px; }
+.timeline-dot { position:absolute; left:-7px; top:0; width:14px; height:14px; border:3px solid var(--surface); border-radius:50%; box-shadow:0 0 0 1px var(--text-secondary); }
+.timeline-stem { position:absolute; left:0; width:2px; height:70px; transform:translateX(-50%); }
+.timeline-point.above .timeline-stem { top:calc(-70px - var(--lane) * 82px); height:calc(70px + var(--lane) * 82px); }
+.timeline-point.below .timeline-stem { top:13px; height:calc(70px + var(--lane) * 82px); }
+.timeline-card { position:absolute; width:150px; padding:7px 8px; background:var(--surface); border:2px solid; border-radius:8px; box-shadow:var(--shadow); font-size:11px; line-height:1.35; }
+.timeline-point.above .timeline-card { bottom:calc(70px + var(--lane) * 82px); transform:translateX(-50%); }
+.timeline-point.below .timeline-card { top:calc(70px + var(--lane) * 82px); transform:translateX(-50%); }
+.timeline-card b,.timeline-card small,.timeline-card em { display:block; }.timeline-card small { color:var(--text-muted); }.timeline-card em { color:var(--text-secondary); font-style:normal; margin-top:3px; }
+.timeline-actions { position:absolute; top:4px; right:4px; display:flex; gap:2px; }.timeline-actions button { border:0; background:none; color:var(--text-muted); cursor:pointer; font-size:10px; }
+.timeline-node span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.timeline-node button { border:0; background:rgba(255,255,255,.25); color:#fff; border-radius:4px; cursor:pointer; font-size:10px; }
+.timeline-empty { padding:30px; text-align:center; color:var(--text-muted); }
+
+/* 里程碑：编辑感的学期轴，深靛背景承托一条明亮主轴 */
+#view-timeline { background: var(--surface); border-radius: var(--radius); padding: 24px; color: var(--text); overflow: hidden; }
+#view-timeline .timeline-toolbar { margin-bottom: 22px; }
+#view-timeline .list-label { color: var(--text); font-size: 22px; letter-spacing: -.4px; }
+#view-timeline .timeline-range { color: var(--text-secondary); font-size: 12px; }
+#view-timeline .timeline-range input { color:var(--text); background:var(--surface); border:1px solid var(--border); border-radius:7px; padding:5px 7px; font:inherit; }
+#view-timeline .timeline-board { background: #fbfcfe; border:1px solid var(--border); box-shadow: var(--shadow); overflow:hidden; }
+#view-timeline .timeline-axis-wrap { min-width:0; width:100%; }
+#view-timeline .timeline-scale { height: 30px; }
+#view-timeline .timeline-scale span { color:var(--text-muted); font-size:11px; font-variant-numeric: tabular-nums; }
+#view-timeline .timeline-axis { background:none; }
+#view-timeline .timeline-axis::before { height:3px; background:var(--blue); box-shadow:0 0 10px rgba(59,130,246,.22); }
+#view-timeline .timeline-dot { border-color:#fbfcfe; box-shadow:0 0 0 2px var(--blue); }
+#view-timeline .timeline-stem { background:var(--blue) !important; opacity:.75; }
+#view-timeline .timeline-card { width:126px; color:var(--text); background:var(--surface); border:1px solid var(--border) !important; border-left:3px solid var(--blue) !important; box-shadow:0 5px 16px rgba(30,41,59,.10); transition:transform .18s ease, border-color .18s ease; }
+#view-timeline .timeline-card:hover { transform:translateX(-50%) translateY(-3px); border-color:var(--blue) !important; }
+#view-timeline .timeline-point.important .timeline-card { font-weight:600; box-shadow:0 6px 18px rgba(59,130,246,.16); }
+#view-timeline .timeline-card small { color:var(--blue); margin-top:2px; }
+#view-timeline .timeline-card em { color:var(--text-secondary); }
+#view-timeline .timeline-actions button { color:var(--text-muted); }
+#view-timeline .timeline-actions button:hover { color:#fff; }
+#view-timeline .btn-primary { background:var(--blue); border-color:var(--blue); color:#fff; font-weight:600; }
+#view-timeline .timeline-form { background:var(--surface); border-color:var(--border); }
+#view-timeline .timeline-form input[type=text], #view-timeline .timeline-form input[type=date] { color:var(--text); background:var(--surface); border-color:var(--border); }
+#view-timeline .timeline-empty { color:var(--text-muted); padding:50px 20px; }
+
 /* ===== Toast ===== */
 .toast {
   position: fixed; bottom: 24px; left: 50%;

@@ -36,6 +36,7 @@
     if (o.templates) out.templates = st.templates || [];
     if (o.config) out.config = st.config;
     if (o.memos) out.memos = st.memos || [];
+    if (o.timeline) out.timeline = st.timeline || [];
     return out;
   }
 
@@ -43,11 +44,20 @@
   // 覆盖：只换文件里出现过的那几天，其余日期一条不动。
   // 「部分导出 → 改完导回来」不该伤到没导出的日期。
   // 文件里某天是空数组 = 那天被清空（键一起删掉，不留空壳）。
-  function replaceDays(cur, inc) {
+  function replaceDays(cur, inc, range) {
     const out = Object.assign({}, cur || {});
     for (const date of Object.keys(inc || {})) {
       const arr = inc[date];
-      if (Array.isArray(arr) && arr.length) out[date] = arr;
+      // 区间外的日期只可能是跨天任务从区间外溢带入的来源日。
+      // 这些日期的其它任务没有被导出，不能整桶替换，否则会误删。
+      const outside = range && (date < range.from || date > range.to);
+      if (outside) {
+        const byId = {};
+        for (const t of (out[date] || [])) byId[t.id] = t;
+        for (const t of (Array.isArray(arr) ? arr : [])) byId[t.id] = t;
+        const merged = Object.values(byId);
+        if (merged.length) out[date] = merged; else delete out[date];
+      } else if (Array.isArray(arr) && arr.length) out[date] = arr;
       else delete out[date];
     }
     return out;

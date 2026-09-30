@@ -10,6 +10,9 @@ AI-数据格式说明.md
 # Claude Code 本地配置与交接文档 — 绝不提交
 .claude/
 
+# 本地交接说明 — 不随公开仓库上传
+AGENTS.md
+
 # 依赖与构建产物
 node_modules/
 dist/
