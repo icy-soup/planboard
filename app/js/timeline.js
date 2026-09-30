@@ -39,7 +39,8 @@
     const from = document.getElementById('timelineFrom').value;
     if (!title || !from) { PB.list.showToast('请填写节点名称和日期'); return; }
     if (from < `${new Date().getFullYear()}-01-01`) { PB.list.showToast('节点日期不能早于今年'); return; }
-    const list = store.get().timeline || (store.get().timeline = []);
+    const st = store.get();
+    const list = st.timeline || (st.timeline = []);
     const item = { id: editingId || ('m_' + Date.now().toString(36)), title, from, to: from,
       note: document.getElementById('timelineNote').value.trim(),
       color: document.getElementById('timelineColor').value,
@@ -65,7 +66,6 @@
     if (fromEl) { fromEl.min = minMonth; fromEl.max = maxMonth; fromEl.value = rangeFrom; }
     if (toEl) { toEl.min = minMonth; toEl.max = maxMonth; toEl.value = rangeTo; }
     const list = (store.get().timeline || []).slice().sort((a, b) => String(a.from).localeCompare(String(b.from)));
-    const emptyHint = '';
     const min = fromDate; const max = util.addDays(toDate, -1);
     const total = Math.max(1, util.daysBetween(min, max) + 1);
     const ticks = [];
@@ -88,7 +88,7 @@
       return { x, date, left, side, lane };
     });
     const axisHeight = Math.max(250, 180 + Math.max(lanes.above.length, lanes.below.length) * 164);
-    board.innerHTML = `${emptyHint}<div class="timeline-axis-wrap"><div class="timeline-years">${years.join('')}</div><div class="timeline-scale">${ticks.join('')}</div><div class="timeline-axis" style="--axis-height:${axisHeight}px">${assignments.map(({x, date, left, side, lane}) => {
+    board.innerHTML = `<div class="timeline-axis-wrap"><div class="timeline-years">${years.join('')}</div><div class="timeline-scale">${ticks.join('')}</div><div class="timeline-axis" style="--axis-height:${axisHeight}px">${assignments.map(({x, date, left, side, lane}) => {
       const daysAway = util.daysBetween(util.todayStr(), date);
       const color = daysAway < 0 ? '#94a3b8' : daysAway <= 14 ? '#f97316' : (x.color || '#3b82f6');
       const weight = x.important === false ? '' : ' important';

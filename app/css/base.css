@@ -241,9 +241,6 @@ body {
 .timeline-point.below .timeline-card { top:calc(70px + var(--lane) * 82px); transform:translateX(-50%); }
 .timeline-card b,.timeline-card small,.timeline-card em { display:block; }.timeline-card small { color:var(--text-muted); }.timeline-card em { color:var(--text-secondary); font-style:normal; margin-top:3px; }
 .timeline-actions { position:absolute; top:4px; right:4px; display:flex; gap:2px; }.timeline-actions button { border:0; background:none; color:var(--text-muted); cursor:pointer; font-size:10px; }
-.timeline-node span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.timeline-node button { border:0; background:rgba(255,255,255,.25); color:#fff; border-radius:4px; cursor:pointer; font-size:10px; }
-.timeline-empty { padding:30px; text-align:center; color:var(--text-muted); }
 
 /* 里程碑：编辑感的学期轴，深靛背景承托一条明亮主轴 */
 #view-timeline { background: var(--surface); border-radius: var(--radius); padding: 24px; color: var(--text); overflow: hidden; }
@@ -269,7 +266,6 @@ body {
 #view-timeline .btn-primary { background:var(--blue); border-color:var(--blue); color:#fff; font-weight:600; }
 #view-timeline .timeline-form { background:var(--surface); border-color:var(--border); }
 #view-timeline .timeline-form input[type=text], #view-timeline .timeline-form input[type=date] { color:var(--text); background:var(--surface); border-color:var(--border); }
-#view-timeline .timeline-empty { color:var(--text-muted); padding:50px 20px; }
 
 /* ===== Toast ===== */
 .toast {
