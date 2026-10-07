@@ -89,6 +89,18 @@ test('replaceDays: 文件里某天是空数组就把那天清掉', () => {
   assert.strictEqual(out['2026-09-27'][0].id, 'keep');
 });
 
+test('deleteDateRange: 只删除闭区间内的任务日期', () => {
+  const cur = {
+    '2026-10-01': [{ id: 'a' }],
+    '2026-10-02': [{ id: 'b' }],
+    '2026-10-03': [{ id: 'c' }],
+    '2026-10-04': [{ id: 'd' }]
+  };
+  const out = transfer.deleteDateRange(cur, '2026-10-02', '2026-10-03');
+  assert.deepStrictEqual(Object.keys(out).sort(), ['2026-10-01', '2026-10-04']);
+  assert.ok(cur['2026-10-02'], '不应修改原对象');
+});
+
 test('replaceDays: 区间外的跨天补带日期只合并，不误删同日其它任务', () => {
   const cur = {
     '2026-09-19': [{ id: 'other' }, { id: 'span', text: '旧' }],

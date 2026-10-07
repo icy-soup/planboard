@@ -63,6 +63,14 @@
     return out;
   }
 
+  function deleteDateRange(cur, from, to) {
+    const out = Object.assign({}, cur || {});
+    for (const date of Object.keys(out)) {
+      if (date >= from && date <= to) delete out[date];
+    }
+    return out;
+  }
+
   // 合并：同一天里按 id 顶掉，文件里多出来的排在后面
   function mergeDays(cur, inc) {
     const out = Object.assign({}, cur || {});
@@ -93,7 +101,7 @@
     return { count, days: keys.length };
   }
 
-  const api = { sliceForExport, replaceDays, mergeDays, mergeList, describeSlice };
+  const api = { sliceForExport, replaceDays, deleteDateRange, mergeDays, mergeList, describeSlice };
   PB.transfer = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

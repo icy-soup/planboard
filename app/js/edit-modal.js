@@ -10,6 +10,7 @@
 
   // { date, fromDate, isNew, taskId, templateId, virtual, draft }
   let state = null;
+  let pointerDownInside = false;
 
   // 属性值要转义引号，util.escapeHtml 只处理 &<>，放进 value="" 里会漏
   function attr(s) {
@@ -69,13 +70,25 @@
     show();
   }
 
-  function show() { $('editModal').classList.add('open'); }
+  function show() {
+    if (PB.debug) PB.debug.openModal('editModal', state.virtual ? null : '#efText');
+    else $('editModal').classList.add('open');
+  }
   function close() {
     const el = $('editModal');
     if (el) el.classList.remove('open');
     state = null;
   }
+  function onOverlayPointerDown(e) {
+    // Text selection can end outside the editor. Do not treat that gesture as
+    // an intentional click on the overlay.
+    pointerDownInside = e.target !== e.currentTarget;
+  }
   function onOverlayClick(e) {
+    if (pointerDownInside) {
+      pointerDownInside = false;
+      return;
+    }
     if (e.target.classList.contains('modal-overlay')) close();
   }
 
@@ -337,7 +350,7 @@
   }
 
   const api = { openTask, close, save, remove, skipDay, gotoCalendar, onTime,
-                setAllDay, setCross, setRepeat, onOverlayClick,
+                setAllDay, setCross, setRepeat, onOverlayPointerDown, onOverlayClick,
                 get state() { return state; } };
   PB.edit = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

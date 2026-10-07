@@ -86,7 +86,7 @@ const SPAN_ROW_H = 48;       // 顶部全天带子每行的高度（跟时间网
     return null;
   }
 
-  function taskBlockHtml(task, dateStr, lane, laneCount, layout) {
+  function taskBlockHtml(task, dateStr, lane, laneCount, layout, sourceDate) {
     const s = util.offsetFromTime(task.start);
     const e = s + util.durationMinutes(task.start, task.end);
     const top = util.weekY(s, layout);
@@ -99,7 +99,7 @@ const SPAN_ROW_H = 48;       // 顶部全天带子每行的高度（跟时间网
     // 但改它得回它挂着的起始日那一格（openTask 按桶键找任务）。
     // 它也不给拖 —— 拖走一块该动的是范围，不是某一格。
     const multi = PB.span.isMultiDay(task);
-    const homeDate = multi ? task.date : dateStr;
+    const homeDate = multi ? task.date : (task.virtual ? sourceDate : (task.date || sourceDate || dateStr));
     const done = multi ? PB.span.isDoneDay(task, dateStr) : !!task.done;
     const cls = ['week-block'];
     if (task.virtual) cls.push('virtual');
@@ -372,24 +372,37 @@ const SPAN_ROW_H = 48;       // 顶部全天带子每行的高度（跟时间网
     const counts = {};
     const cols = dates.map(d => {
       // 有时段的跨天任务挂在起始日那一格，但覆盖到的每一天都要在网格里出现
-      const dayTasks = (st.tasks[d] || []).concat(PB.span.timedCovering(st.tasks, d));
-      const weekNumber = st.config.semesterStart
-        ? util.weekNo(d, st.config.semesterStart) : null;
-      // 全天任务画在顶部带子里，不进时间网格
-      const resolved = PB.template.resolveDayTasks(d, weekNumber, st.templates, dayTasks)
-        .filter(t => !t.allDay);
-
       const visible = [];
-      for (const t of resolved) {
-        const s = util.offsetFromTime(t.start);
-        const e = s + util.durationMinutes(t.start, t.end);
-        const bandId = hiddenBandId(s, e, layout);
-        if (bandId) counts[bandId] = (counts[bandId] || 0) + 1;
-        else visible.push(t);
+      const sourceDates = [d, util.addDays(d, 1)];
+      for (const sourceDate of sourceDates) {
+        const dayTasks = (st.tasks[sourceDate] || []).concat(
+          sourceDate === d ? PB.span.timedCovering(st.tasks, d) : []
+        );
+        const weekNumber = st.config.semesterStart
+          ? util.weekNo(sourceDate, st.config.semesterStart) : null;
+        // 全天任务画在顶部带子里，不进时间网格；05:00 前归前一天时间线。
+        const resolved = PB.template.resolveDayTasks(sourceDate, weekNumber, st.templates, dayTasks)
+          .filter(t => {
+            if (t.allDay) return false;
+            // timedCovering 是别的日期的跨天任务，继续占当前覆盖日；只有任务自己的起始日按清醒日换列。
+            const displayDate = t.date && t.date !== sourceDate
+              ? d : util.wakeDate(sourceDate, t.start);
+            return displayDate === d;
+          });
+        for (const t of resolved) {
+          const s = util.offsetFromTime(t.start);
+          const e = s + util.durationMinutes(t.start, t.end);
+          const bandId = hiddenBandId(s, e, layout);
+          if (bandId) counts[bandId] = (counts[bandId] || 0) + 1;
+          else visible.push({ task: t, sourceDate });
+        }
       }
 
-      const blocks = layoutOverlaps(visible)
-        .map(p => taskBlockHtml(p.task, d, p.lane, p.laneCount, layout)).join('');
+      const blocks = layoutOverlaps(visible.map(item => item.task))
+        .map(p => {
+          const source = visible.find(item => item.task === p.task);
+          return taskBlockHtml(p.task, d, p.lane, p.laneCount, layout, source && source.sourceDate);
+        }).join('');
       const isToday = util.isToday(d);
       return `<div class="week-col${isToday ? ' today' : ''}" data-date="${d}"
                    style="height:${total}px">
@@ -429,6 +442,8 @@ const SPAN_ROW_H = 48;       // 顶部全天带子每行的高度（跟时间网
   function updateNowLine() {
     const now = new Date();
     const todayStr = util.todayStr();
+    const nowTime = util.pad2(now.getHours()) + ':' + util.pad2(now.getMinutes());
+    const lineDate = util.wakeDate(todayStr, nowTime);
     const layout = util.weekLayout(expanded);
     const offset = (now.getHours() * 60 + now.getMinutes() - util.DAY_START_MINUTES + 1440) % 1440;
     const inCollapsed = layout.some(s => !s.open && offset >= s.from && offset <= s.to);
@@ -436,7 +451,7 @@ const SPAN_ROW_H = 48;       // 顶部全天带子每行的高度（跟时间网
     document.querySelectorAll('.week-col').forEach(col => {
       const line = col.querySelector('[data-now]');
       if (!line) return;
-      if (col.dataset.date !== todayStr || inCollapsed) { line.style.display = 'none'; return; }
+      if (col.dataset.date !== lineDate || inCollapsed) { line.style.display = 'none'; return; }
       line.style.display = 'block';
       line.style.top = util.weekY(offset, layout) + 'px';
     });

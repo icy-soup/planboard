@@ -21,7 +21,8 @@
     document.getElementById('desktopHint').style.display = hasDesktopAPI() ? 'none' : '';
     renderSubjectList();
     renderViewVisibility();
-    document.getElementById('settingsModal').classList.add('open');
+    if (PB.debug) PB.debug.openModal('settingsModal', '#configProjectName');
+    else document.getElementById('settingsModal').classList.add('open');
     // 下面几步要问主进程，先让弹窗出来再填
     refreshKeyStatus();
     refreshDataDir();
@@ -62,6 +63,41 @@
   // 以前点遮罩毫无反应，而学期日期又只在关弹窗时才写盘，所以像是「设置不了」。
   function onOverlayClick(e) {
     if (e.target.classList.contains('modal-overlay')) closeSettings();
+  }
+
+  function openDeleteRange() {
+    const today = util.todayStr();
+    document.getElementById('deleteFrom').value = today;
+    document.getElementById('deleteTo').value = today;
+    previewDeleteRange();
+    document.getElementById('deleteRangeModal').classList.add('open');
+  }
+  function closeDeleteRange() { document.getElementById('deleteRangeModal').classList.remove('open'); }
+  function onDeleteRangeOverlayClick(e) { if (e.target.classList.contains('modal-overlay')) closeDeleteRange(); }
+  function deleteRangeCount(from, to) {
+    let n = 0; const tasks = store.get().tasks || {};
+    for (const date of Object.keys(tasks)) if (date >= from && date <= to) n += (tasks[date] || []).length;
+    return n;
+  }
+  function previewDeleteRange() {
+    const from = document.getElementById('deleteFrom').value;
+    const to = document.getElementById('deleteTo').value;
+    const el = document.getElementById('deleteRangePreview');
+    if (!from || !to || from > to) { el.textContent = '请选择有效的日期范围。'; return; }
+    el.textContent = `这段时间共有 ${deleteRangeCount(from, to)} 条任务将被删除。`;
+  }
+  function confirmDeleteRange() {
+    const from = document.getElementById('deleteFrom').value;
+    const to = document.getElementById('deleteTo').value;
+    if (!from || !to || from > to) { previewDeleteRange(); return; }
+    const count = deleteRangeCount(from, to);
+    if (!count) { closeDeleteRange(); PB.list.showToast('这段时间没有任务'); return; }
+    if (!confirm(`确定删除 ${from} 至 ${to} 的 ${count} 条任务吗？此操作会先备份，不能自动撤销。`)) return;
+    store.get().tasks = transfer.deleteDateRange(store.get().tasks, from, to);
+    store.save(true);
+    closeDeleteRange();
+    PB.week.renderWeek(); PB.list.render(); PB.quadrant.render();
+    PB.list.showToast(`已删除 ${count} 条任务`);
   }
 
   // 学期日期改动即时落盘，不等关弹窗
@@ -303,7 +339,8 @@
     }
     document.getElementById('exportAll').checked = false;
     syncExportAll();
-    document.getElementById('exportModal').classList.add('open');
+    if (PB.debug) PB.debug.openModal('exportModal');
+    else document.getElementById('exportModal').classList.add('open');
   }
 
   // 勾了「全部」就把两个日期框停掉，免得两处打架
@@ -416,7 +453,8 @@
       // 文件里带课表就默认勾上「连课表一起处理」；文件里没有就别无端动现有课表
       document.getElementById('importTemplates').checked =
         Array.isArray(data.templates) && data.templates.length > 0;
-      document.getElementById('importModal').classList.add('open');
+      if (PB.debug) PB.debug.openModal('importModal');
+      else document.getElementById('importModal').classList.add('open');
     };
     reader.readAsText(file);
   }
@@ -499,6 +537,7 @@
     openExport, cancelExport, confirmExport, syncExportAll, onExportOverlayClick,
     importJSON, resetPlan,
     cancelImport, doImport, onImportOverlayClick,
+    openDeleteRange, closeDeleteRange, onDeleteRangeOverlayClick, previewDeleteRange, confirmDeleteRange,
     renderSubjectList,
     setDesktop, refreshKeyStatus, saveApiKey, clearApiKey,
     renderMemoryTabs, openMemory, onMemoryInput, flushMemory, setMemoryEnabled

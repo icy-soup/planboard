@@ -26,6 +26,15 @@
     }
   });
 
+  // A window can remain visible while Windows has given focus to another
+  // window. Restore native focus before the control handles the click.
+  document.addEventListener('pointerdown', e => {
+    const target = e.target.closest?.('input, textarea, select, button, [contenteditable="true"]');
+    if (target && !document.hasFocus()) {
+      try { globalThis.planboardAPI?.app?.focusWindow?.(); } catch (_) {}
+    }
+  }, true);
+
   // ============ VIEW SWITCHING ============
   const VIEWS = ['week', 'list', 'timeline', 'quadrant', 'memo'];
   let activeView = 'week';

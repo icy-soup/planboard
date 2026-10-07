@@ -53,6 +53,11 @@
     return toDateStr(d);
   }
 
+  // 清醒日的 05:00 前属于前一个日历日的时间线。
+  function wakeDate(dateStr, hhmm) {
+    return toMinutes(hhmm) < DAY_START_MINUTES ? addDays(dateStr, -1) : dateStr;
+  }
+
   function startOfWeek(dateStr) {
     return addDays(dateStr, -(dayOfWeek(dateStr) - 1));
   }
@@ -251,7 +256,7 @@
     DAY_START_MINUTES, PX_PER_HOUR,
     pad2, toMinutes, toHHMM,
     offsetFromTime, timeFromOffset, durationMinutes,
-    toDateStr, parseDate, dayOfWeek, addDays, startOfWeek, daysBetween, weekNo,
+    toDateStr, parseDate, dayOfWeek, addDays, wakeDate, startOfWeek, daysBetween, weekNo,
     endFromWeeks, weeksBetween, clampRange, editRange,
     formatShortDate, formatDateLabel, todayStr, isToday, weekdayLabel, escapeHtml, attr,
     parseTimeInput, syncTimeField, timeKeydown,

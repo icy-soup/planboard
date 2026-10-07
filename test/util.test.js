@@ -51,6 +51,13 @@ test('addDays 跨月跨年正确', () => {
   assert.strictEqual(util.addDays('2026-09-01', -1), '2026-08-31');
 });
 
+test('醒日日期：05:00 前的任务显示在前一天时间线', () => {
+  assert.strictEqual(util.wakeDate('2026-10-01', '00:00'), '2026-09-30');
+  assert.strictEqual(util.wakeDate('2027-01-01', '04:59'), '2026-12-31');
+  assert.strictEqual(util.wakeDate('2026-10-01', '05:00'), '2026-10-01');
+  assert.strictEqual(util.wakeDate('2026-10-01', '12:00'), '2026-10-01');
+});
+
 test('startOfWeek 返回所在周的周一', () => {
   assert.strictEqual(util.startOfWeek('2026-09-17'), '2026-09-14');  // 周四 → 周一
   assert.strictEqual(util.startOfWeek('2026-09-14'), '2026-09-14');  // 周一 → 自身

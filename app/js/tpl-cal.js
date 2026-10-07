@@ -213,7 +213,8 @@
 
   // ============ 打开 / 关闭 ============
   function open() {
-    document.getElementById('tplCalModal').classList.add('open');
+    if (PB.debug) PB.debug.openModal('tplCalModal');
+    else document.getElementById('tplCalModal').classList.add('open');
     render();
   }
   function close() {

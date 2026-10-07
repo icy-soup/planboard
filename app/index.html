@@ -43,6 +43,7 @@
         <button class="btn" onclick="PB.week.prevWeek()">← 上周</button>
         <button class="btn" onclick="PB.week.gotoThisWeek()">回到本周</button>
         <button class="btn" onclick="PB.week.nextWeek()">下周 →</button>
+        <button class="btn btn-danger" onclick="PB.settings.openDeleteRange()">⌫ 删除日期范围</button>
         <span class="week-price-legend" title="DeepSeek 峰谷计价：空闲时段价格为高峰时段的一半。工作日 9:00–12:00、14:00–18:00 为高峰；其余时段及周末、法定节假日为空闲。">
           <span class="price-dot" style="background:rgba(245,158,11,.6)"></span>高峰
           <span class="price-dot" style="background:rgba(16,185,129,.6)"></span>空闲
@@ -272,6 +273,20 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="deleteRangeModal" onclick="PB.settings.onDeleteRangeOverlayClick(event)">
+  <div class="modal modal-sm">
+    <button class="modal-close" onclick="PB.settings.closeDeleteRange()">&times;</button>
+    <h2>按日期删除任务</h2>
+    <div class="edit-hint">只删除任务，不影响里程碑、课表模板、备忘录和范围外日期。</div>
+    <div class="edit-row">
+      <label>起始日期<input type="date" id="deleteFrom" onchange="PB.settings.previewDeleteRange()"></label>
+      <label>结束日期<input type="date" id="deleteTo" onchange="PB.settings.previewDeleteRange()"></label>
+    </div>
+    <div class="form-hint" id="deleteRangePreview">请选择日期范围。</div>
+    <div class="edit-actions"><span class="edit-spacer"></span><button class="btn" onclick="PB.settings.closeDeleteRange()">取消</button><button class="btn btn-danger" onclick="PB.settings.confirmDeleteRange()">删除这些任务</button></div>
+  </div>
+</div>
+
 <!-- 导入：先让用户看清两边都有多少东西，再决定覆盖还是合并 -->
 <div class="modal-overlay" id="importModal" onclick="PB.settings.onImportOverlayClick(event)">
   <div class="modal modal-sm">
@@ -307,7 +322,7 @@
 </div>
 
 <!-- 任务编辑 -->
-<div class="modal-overlay" id="editModal" onclick="PB.edit.onOverlayClick(event)">
+<div class="modal-overlay" id="editModal" onpointerdown="PB.edit.onOverlayPointerDown(event)" onclick="PB.edit.onOverlayClick(event)">
   <div class="modal modal-sm">
     <button class="modal-close" onclick="PB.edit.close()">&times;</button>
     <h2 id="editTitle">任务详情</h2>
@@ -317,6 +332,7 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="js/diagnostic.js"></script>
 <script src="js/util.js"></script>
 <script src="js/price.js"></script>
 <script src="js/store.js"></script>

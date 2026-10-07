@@ -69,7 +69,8 @@
   // 有时段的跨天任务挂在起始日那一格，但覆盖到的每一天都要出现 ——
   // 每一行是「任务 + 它挂在哪一格」：改它得回那一格，勾的却是你看到的这一天。
   function timeRowsFor(date) {
-    const mine = (store.get().tasks[date] || []).filter(t => !t.allDay)
+    // deleted 是课表模板的墓碑，只用于压住当天的虚拟课程，不能当成普通任务画出来。
+    const mine = (store.get().tasks[date] || []).filter(t => !t.allDay && !t.deleted)
       .map(t => ({ t, home: date }));
     const spilled = PB.span.timedCovering(store.get().tasks, date)
       .map(t => ({ t, home: t.date }));
@@ -88,14 +89,29 @@
 
     const todayStr = util.toDateStr(new Date());
     const spans = PB.span.allSpans(store.get().tasks);
+    // 总进度的口径是“要完成几件事”，而不是“页面上画了几行”。
+    // once 任务会在跨天范围的每一天各出现一次，但整条任务只应进分子/分母一次。
+    const countedOnce = new Set();
+    const countProgressItems = items => {
+      let count = 0, completed = 0;
+      for (const t of items) {
+        const key = t.once ? (t.id || t) : null;
+        if (key && countedOnce.has(key)) continue;
+        if (key) countedOnce.add(key);
+        count++;
+        if (PB.span.isDoneDay(t, t.date)) completed++;
+      }
+      return { count, completed };
+    };
     for (const day of days) {
       const rows = timeRowsFor(day.date);
       const daySpans = spans.filter(t => PB.span.coversDay(t, day.date));
       const dayCount = rows.length + daySpans.length;
       const dayDone = rows.filter(r => PB.span.isDoneDay(r.t, day.date)).length
                     + daySpans.filter(t => PB.span.isDoneDay(t, day.date)).length;
-      total += dayCount;
-      done += dayDone;
+      const progress = countProgressItems(rows.map(r => r.t).concat(daySpans));
+      total += progress.count;
+      done += progress.completed;
       const isPast = day.date < todayStr;
 
       html += `<div class="timeline-item">

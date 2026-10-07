@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('planboardAPI', {
   app: {
     setOpenAtLogin: (on) => ipcRenderer.invoke('app:setOpenAtLogin', on),
     setCloseToTray: (on) => ipcRenderer.invoke('app:setCloseToTray', on),
+    focusWindow: () => ipcRenderer.sendSync('app:focus'),
     dataDir: () => ipcRenderer.invoke('app:dataDir')
   },
   secrets: {
@@ -26,5 +27,8 @@ contextBridge.exposeInMainWorld('planboardAPI', {
   },
   ai: {
     chat: (messages, opts) => ipcRenderer.invoke('ai:chat', messages, opts)
+  },
+  diagnostic: {
+    log: (payload) => ipcRenderer.send('diagnostic:log', payload)
   }
 });

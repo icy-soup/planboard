@@ -22,6 +22,8 @@ const STATE_FILE = path.join(DATA_DIR, 'planboard.json');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 const SECRETS_FILE = path.join(DATA_DIR, 'secrets.json');
 const MEMORY_DIR = path.join(DATA_DIR, 'memory');
+const LOG_DIR = path.join(DATA_DIR, 'logs');
+const LOG_FILE = path.join(LOG_DIR, 'planboard.log');
 
 const MEMORY_FILES = ['profile', 'courses', 'goals', 'preferences'];
 
@@ -34,6 +36,19 @@ let closeToTray = false;
 let quitting = false;
 // 存储层要告诉界面的事（文件损坏已回滚备份等），随下次 storage:read 一起交出去
 let readNotice = null;
+
+function diagnosticLog(type, details) {
+  try {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+    const line = JSON.stringify({ at: new Date().toISOString(), type, details: details || {} }) + '\n';
+    fs.appendFileSync(LOG_FILE, line, 'utf8');
+  } catch (err) {
+    console.error('写入诊断日志失败：', err.message);
+  }
+}
+
+process.on('uncaughtException', err => diagnosticLog('main-uncaught-exception', { message: err.message, stack: err.stack }));
+process.on('unhandledRejection', reason => diagnosticLog('main-unhandled-rejection', { reason: String(reason?.stack || reason || '') }));
 
 // ============ 主数据文件 ============
 function readFile(file) {
@@ -153,6 +168,22 @@ function createWindow() {
     }
   });
   win.loadFile(path.join(ROOT, 'app', 'index.html'));
+  win.setFocusable(true);
+  win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    if (level >= 2) diagnosticLog('renderer-console', { level, message, line, sourceId });
+  });
+  win.webContents.on('render-process-gone', (_event, details) => diagnosticLog('render-process-gone', details));
+  win.webContents.on('did-fail-load', (_event, code, description, validatedURL) =>
+    diagnosticLog('did-fail-load', { code, description, validatedURL }));
+  const windowState = () => ({
+    focused: win.isFocused(),
+    visible: win.isVisible(),
+    focusable: win.isFocusable(),
+    webContentsFocused: win.webContents.isFocused()
+  });
+  win.on('focus', () => diagnosticLog('window-focus', windowState()));
+  win.on('blur', () => diagnosticLog('window-blur', windowState()));
+  win.webContents.on('did-finish-load', () => diagnosticLog('renderer-ready', windowState()));
 
   // 关窗 = 退出；开了「关闭后最小化到托盘」才改成藏起来
   win.on('close', (e) => {
@@ -165,7 +196,13 @@ function createWindow() {
 
 function showWindow() {
   if (!win) createWindow();
-  else { win.show(); win.focus(); }
+  else {
+    win.setFocusable(true);
+    win.show();
+    app.focus({ steal: true });
+    win.focus();
+    win.webContents.focus();
+  }
 }
 
 function createTray() {
@@ -215,6 +252,32 @@ ipcMain.on('storage:read', (event) => {
   const notice = readNotice;
   readNotice = null;
   event.returnValue = { state, notice };
+});
+
+ipcMain.on('diagnostic:log', (_event, payload) => {
+  diagnosticLog('renderer', payload);
+});
+
+// Windows can leave a visible Electron window inactive after it was restored
+// from the tray or another window took activation. Restore native focus
+// synchronously before a renderer control handles its click.
+ipcMain.on('app:focus', (event) => {
+  if (!win || win.isDestroyed()) {
+    event.returnValue = false;
+    return;
+  }
+  win.setFocusable(true);
+  if (!win.isVisible()) win.show();
+  app.focus({ steal: true });
+  win.focus();
+  win.webContents.focus();
+  diagnosticLog('forced-focus', {
+    focused: win.isFocused(),
+    visible: win.isVisible(),
+    focusable: win.isFocusable(),
+    webContentsFocused: win.webContents.isFocused()
+  });
+  event.returnValue = true;
 });
 
 ipcMain.on('storage:write', (event, state, opts) => {
