@@ -34,6 +34,7 @@ let win = null;
 let tray = null;
 let closeToTray = false;
 let quitting = false;
+let focusRecoveryTimer = null;
 // 存储层要告诉界面的事（文件损坏已回滚备份等），随下次 storage:read 一起交出去
 let readNotice = null;
 
@@ -270,6 +271,10 @@ ipcMain.on('app:focus', (event) => {
   if (!win.isVisible()) win.show();
   app.focus({ steal: true });
   win.focus();
+  // Electron can report both the window and webContents as focused while the
+  // renderer's document.hasFocus() is still false. Cycle the page focus so
+  // Chromium emits a real focus event and the pending control can recover.
+  win.webContents.blur();
   win.webContents.focus();
   diagnosticLog('forced-focus', {
     focused: win.isFocused(),
@@ -277,6 +282,20 @@ ipcMain.on('app:focus', (event) => {
     focusable: win.isFocusable(),
     webContentsFocused: win.webContents.isFocused()
   });
+  clearTimeout(focusRecoveryTimer);
+  focusRecoveryTimer = setTimeout(() => {
+    if (!win || win.isDestroyed() || !win.isVisible()) return;
+    app.focus({ steal: true });
+    win.focus();
+    win.webContents.blur();
+    win.webContents.focus();
+    diagnosticLog('forced-focus-retry', {
+      focused: win.isFocused(),
+      visible: win.isVisible(),
+      focusable: win.isFocusable(),
+      webContentsFocused: win.webContents.isFocused()
+    });
+  }, 80);
   event.returnValue = true;
 });
 

@@ -36,7 +36,8 @@
         settings: {
           openAtLogin: false,
           closeToTray: false,
-          visibleViews: ['week', 'list', 'timeline', 'quadrant', 'memo'],
+          theme: 'light',
+          visibleViews: ['week', 'list', 'timeline', 'memo'],
           ai: JSON.parse(JSON.stringify(DEFAULT_AI_SETTINGS))
         }
       },

@@ -5,6 +5,9 @@
 
   let activeId = null;
   let saveTimer = null;
+  let undoStack = [];
+  let redoStack = [];
+  let lastSnapshot = null;
 
   function getMemos() { return PB.store.get().memos; }
 
@@ -41,15 +44,90 @@
     renderMemos();
   }
 
+  function snapshot() {
+    return {
+      title: document.getElementById('memoTitle')?.value || '',
+      body: document.getElementById('memoBody')?.value || ''
+    };
+  }
+
+  function sameSnapshot(a, b) {
+    return !!a && !!b && a.title === b.title && a.body === b.body;
+  }
+
+  function resetHistory() {
+    undoStack = [];
+    redoStack = [];
+    lastSnapshot = snapshot();
+  }
+
   // 编辑区输入 → 防抖保存
   function onEdit() {
     const m = getMemos().find(x => x.id === activeId);
     if (!m) return;
-    m.title = document.getElementById('memoTitle').value;
-    m.body = document.getElementById('memoBody').value;
+    const current = snapshot();
+    if (lastSnapshot && !sameSnapshot(lastSnapshot, current)) {
+      undoStack.push(lastSnapshot);
+      if (undoStack.length > 100) undoStack.shift();
+      redoStack = [];
+    }
+    lastSnapshot = current;
+    m.title = current.title;
+    m.body = current.body;
     m.updatedAt = Date.now();
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => { PB.store.save(); renderMemoList(); }, 800);
+  }
+
+  function onKeydown(e) {
+    const isMemoInput = e.target.id === 'memoBody' || e.target.id === 'memoTitle';
+    if (!isMemoInput || e.target.disabled) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      undo();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
+      e.preventDefault();
+      redo();
+      return;
+    }
+    if (e.key !== 'Tab' || e.target.id !== 'memoBody') return;
+    e.preventDefault();
+    const el = e.target;
+    el.setRangeText('\t', el.selectionStart, el.selectionEnd, 'end');
+    onEdit();
+  }
+
+  function applySnapshot(value) {
+    const titleEl = document.getElementById('memoTitle');
+    const bodyEl = document.getElementById('memoBody');
+    if (!titleEl || !bodyEl) return;
+    titleEl.value = value.title;
+    bodyEl.value = value.body;
+    lastSnapshot = value;
+    const m = getMemos().find(x => x.id === activeId);
+    if (m) {
+      m.title = value.title;
+      m.body = value.body;
+      m.updatedAt = Date.now();
+    }
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => { PB.store.save(); renderMemoList(); }, 800);
+  }
+
+  function undo() {
+    const previous = undoStack.pop();
+    if (!previous || !lastSnapshot) return;
+    redoStack.push(lastSnapshot);
+    applySnapshot(previous);
+  }
+
+  function redo() {
+    const next = redoStack.pop();
+    if (!next || !lastSnapshot) return;
+    undoStack.push(lastSnapshot);
+    applySnapshot(next);
   }
 
   function flushPending() {
@@ -95,8 +173,11 @@
     titleEl.disabled = false; bodyEl.disabled = false; delBtn.disabled = false;
     titleEl.value = m.title;
     bodyEl.value = m.body;
+    resetHistory();
   }
 
-  PB.memo = { renderMemos, createMemo, deleteMemo, selectMemo, onEdit, flushPending,
+  document.addEventListener('keydown', onKeydown, true);
+
+  PB.memo = { renderMemos, createMemo, deleteMemo, selectMemo, onEdit, onKeydown, undo, redo, flushPending,
               get activeId() { return activeId; } };
 })();

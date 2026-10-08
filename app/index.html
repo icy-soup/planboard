@@ -21,6 +21,7 @@
     </div>
     <div class="header-actions">
       <button class="btn" onclick="location.reload()" title="重新加载界面文件，不退出应用">⟳ 刷新界面</button>
+      <button class="btn" id="themeToggle" onclick="PB.theme.toggleCurrent()">🌙 夜间</button>
       <button class="btn" onclick="openSettings()">⚙ 设置</button>
       <button class="btn" onclick="openExport()">⬇ 导出</button>
       <button class="btn" onclick="document.getElementById('importFile').click()">⬆ 导入</button>
@@ -32,7 +33,7 @@
     <button class="tab active" data-view="week">周视图</button>
     <button class="tab" data-view="list">时间轴</button>
     <button class="tab" data-view="timeline">里程碑</button>
-    <button class="tab" data-view="quadrant">四象限</button>
+    <button class="tab" data-view="quadrant" hidden>四象限</button>
     <button class="tab" data-view="memo">备忘录</button>
   </nav>
 
@@ -44,7 +45,7 @@
         <button class="btn" onclick="PB.week.gotoThisWeek()">回到本周</button>
         <button class="btn" onclick="PB.week.nextWeek()">下周 →</button>
         <button class="btn btn-danger" onclick="PB.settings.openDeleteRange()">⌫ 删除日期范围</button>
-        <span class="week-price-legend" title="DeepSeek 峰谷计价：空闲时段价格为高峰时段的一半。工作日 9:00–12:00、14:00–18:00 为高峰；其余时段及周末、法定节假日为空闲。">
+        <span class="week-price-legend" hidden title="DeepSeek 峰谷计价：空闲时段价格为高峰时段的一半。工作日 9:00–12:00、14:00–18:00 为高峰；其余时段及周末、法定节假日为空闲。">
           <span class="price-dot" style="background:rgba(245,158,11,.6)"></span>高峰
           <span class="price-dot" style="background:rgba(16,185,129,.6)"></span>空闲
         </span>
@@ -100,7 +101,7 @@
     <div id="timelineBoard" class="timeline-board"></div>
   </section>
 
-  <section class="view" id="view-quadrant">
+  <section class="view" id="view-quadrant" style="display:none">
     <div class="q-wrap">
       <div class="q-input">
         <textarea id="qInput" placeholder="（可选）一行一条，让 AI 帮你分象限"></textarea>
@@ -202,7 +203,7 @@
       <div class="form-hint" id="dataDirHint"></div>
     </div>
 
-    <div class="modal-section">
+    <div class="modal-section" hidden>
       <h3>AI（DeepSeek）</h3>
       <div class="form-row">
         <label>API Key</label>
@@ -218,7 +219,7 @@
       <div class="form-hint">密钥存在 data/secrets.json，和主数据分开，导出 JSON 不会把它带出去；桌面版下它也不进入页面。</div>
     </div>
 
-    <div class="modal-section">
+    <div class="modal-section" hidden>
       <h3>个人背景记忆
         <span style="font-weight:400;color:var(--text-muted);font-size:12px;">（只有勾选「发送给 AI」的文件会被读取和发送）</span>
       </h3>
@@ -336,6 +337,7 @@
 <script src="js/util.js"></script>
 <script src="js/price.js"></script>
 <script src="js/store.js"></script>
+<script src="js/theme.js"></script>
 <script src="js/span.js"></script>
 <script src="js/transfer.js"></script>
 <script src="js/template.js"></script>
@@ -350,5 +352,6 @@
 <script src="js/tpl-cal.js"></script>
 <script src="js/edit-modal.js"></script>
 <script src="js/main.js"></script>
+<script>PB.theme.init();</script>
 </body>
 </html>

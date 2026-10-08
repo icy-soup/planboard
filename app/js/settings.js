@@ -54,7 +54,8 @@
 
   function renderViewVisibility() {
     const el = document.getElementById('viewVisibility'); if (!el) return;
-    const names = { week: '周视图', list: '任务时间轴', timeline: '里程碑', quadrant: '四象限', memo: '备忘录' };
+    // 四象限暂时隐藏，保留实现以便以后恢复。
+    const names = { week: '周视图', list: '任务时间轴', timeline: '里程碑', memo: '备忘录' };
     const visible = store.get().config.settings.visibleViews || Object.keys(names);
     el.innerHTML = Object.entries(names).map(([id, name]) => `<label class="edit-check" style="margin:0 12px 0 0;"><input type="checkbox" data-view="${id}" ${visible.includes(id) ? 'checked' : ''}> ${name}</label>`).join('');
   }

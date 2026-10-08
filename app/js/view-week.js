@@ -468,6 +468,11 @@ const SPAN_ROW_H = 48;       // 顶部全天带子每行的高度（跟时间网
     return Math.max(0, Math.min(max, Math.round(offset / SNAP_MIN) * SNAP_MIN));
   }
 
+  function dragPreview({ top, delta, height, total }) {
+    const nextTop = Math.max(0, Math.min(total - height, top + delta));
+    return { top: nextTop, delta: nextTop - top };
+  }
+
   function onBlockPointerDown(e) {
     if (e.button !== 0) return;
     const el = e.target.closest('.week-block');
@@ -485,10 +490,12 @@ const SPAN_ROW_H = 48;       // 顶部全天带子每行的高度（跟时间网
       origTop: parseFloat(el.style.top) || 0,
       origHeight: parseFloat(el.style.height) || 0,
       total: util.weekTotalHeight(util.weekLayout(expanded)),
+      hoverCol: null,
       moved: false
     };
     suppressClick = false;
     el.classList.add('dragging');
+    if (e.pointerId !== undefined && el.setPointerCapture) el.setPointerCapture(e.pointerId);
     document.addEventListener('pointermove', onPointerMove);
     document.addEventListener('pointerup', onPointerUp);
     e.preventDefault();
@@ -506,12 +513,16 @@ const SPAN_ROW_H = 48;       // 顶部全天带子每行的高度（跟时间网
       drag.el.style.height = h + 'px';
       drag.pendingHeight = h;
     } else {
-      const top = Math.max(0, Math.min(drag.total - drag.origHeight, drag.origTop + dy));
-      drag.el.style.top = top + 'px';
-      drag.pendingTop = top;
+      const preview = dragPreview({
+        top: drag.origTop, delta: dy, height: drag.origHeight, total: drag.total
+      });
+      // 只改 transform，避免每个 pointermove 都触发网格布局重算。
+      drag.el.style.transform = `translate3d(0, ${preview.delta}px, 0)`;
+      drag.pendingTop = preview.top;
       const col = document.elementFromPoint(e.clientX, e.clientY)?.closest('.week-col');
-      document.querySelectorAll('.week-col.hover').forEach(c => c.classList.remove('hover'));
+      if (drag.hoverCol && drag.hoverCol !== col) drag.hoverCol.classList.remove('hover');
       if (col && col.dataset.date !== drag.date) col.classList.add('hover');
+      drag.hoverCol = col && col.dataset.date !== drag.date ? col : null;
       drag.pendingDate = col ? col.dataset.date : drag.date;
     }
   }
@@ -521,7 +532,8 @@ const SPAN_ROW_H = 48;       // 顶部全天带子每行的高度（跟时间网
     document.removeEventListener('pointermove', onPointerMove);
     document.removeEventListener('pointerup', onPointerUp);
     drag.el.classList.remove('dragging');
-    document.querySelectorAll('.week-col.hover').forEach(c => c.classList.remove('hover'));
+    drag.el.style.transform = '';
+    if (drag.hoverCol) drag.hoverCol.classList.remove('hover');
 
     const d = drag;
     drag = null;
@@ -561,9 +573,10 @@ const SPAN_ROW_H = 48;       // 顶部全天带子每行的高度（跟时间网
     PB.edit.openTask(dateStr, taskId);
   }
 
-  PB.week = { renderWeek, prevWeek, nextWeek, gotoThisWeek, layoutOverlaps, openTask, toggleBand,
+  PB.week = { renderWeek, prevWeek, nextWeek, gotoThisWeek, layoutOverlaps, dragPreview, openTask, toggleBand,
               toggleSpanDay, editSpan, newAllDay,
               spanDragStart, spanDragEnd, spanDragOver, spanDragLeave, spanDrop,
               get currentWeekStart() { return ensureWeekStart(); },
               get expanded() { return Object.assign({}, expanded); } };
+  if (typeof module !== 'undefined' && module.exports) module.exports = PB.week;
 })();

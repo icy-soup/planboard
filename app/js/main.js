@@ -27,20 +27,32 @@
   });
 
   // A window can remain visible while Windows has given focus to another
-  // window. Restore native focus before the control handles the click.
+  // window. Restore native focus before the control handles the click, then
+  // focus the control again when Chromium receives the delayed focus event.
+  let pendingFocusTarget = null;
+  window.addEventListener('focus', () => {
+    const target = pendingFocusTarget;
+    pendingFocusTarget = null;
+    if (target?.isConnected && !target.disabled) {
+      requestAnimationFrame(() => target.focus({ preventScroll: true }));
+    }
+  });
   document.addEventListener('pointerdown', e => {
     const target = e.target.closest?.('input, textarea, select, button, [contenteditable="true"]');
     if (target && !document.hasFocus()) {
+      pendingFocusTarget = target;
       try { globalThis.planboardAPI?.app?.focusWindow?.(); } catch (_) {}
     }
   }, true);
 
   // ============ VIEW SWITCHING ============
   const VIEWS = ['week', 'list', 'timeline', 'quadrant', 'memo'];
+  // AI 功能暂时隐藏，但保留代码和数据，之后可在这里恢复。
+  const HIDDEN_VIEWS = new Set(['quadrant']);
   let activeView = 'week';
 
   function switchView(name) {
-    if (!VIEWS.includes(name)) return;
+    if (!VIEWS.includes(name) || HIDDEN_VIEWS.has(name)) return;
     if (activeView === 'memo' && name !== 'memo') PB.memo.flushPending();
     activeView = name;
 
@@ -63,8 +75,12 @@
 
   function applyViewVisibility() {
     const visible = PB.store.get().config.settings.visibleViews || VIEWS;
-    document.querySelectorAll('#tabs .tab').forEach(b => { b.hidden = !visible.includes(b.dataset.view); });
-    if (!visible.includes(activeView)) switchView(visible[0] || 'week');
+    document.querySelectorAll('#tabs .tab').forEach(b => {
+      b.hidden = HIDDEN_VIEWS.has(b.dataset.view) || !visible.includes(b.dataset.view);
+    });
+    if (HIDDEN_VIEWS.has(activeView) || !visible.includes(activeView)) {
+      switchView(VIEWS.find(id => !HIDDEN_VIEWS.has(id) && visible.includes(id)) || 'week');
+    }
   }
 
   document.getElementById('tabs').addEventListener('click', e => {
